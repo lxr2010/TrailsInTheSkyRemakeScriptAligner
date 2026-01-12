@@ -70,11 +70,11 @@ def main():
   #       logger.info(f"  Top-{i+1} 匹配 (B第 {m['pos_b']} 行, 分数 {m['score']}%):")
   #       logger.info(f"    {m['text_b']}")
 
-  logger.info("\n--- 锚点映射 ---")
-  for pos_a, pos_b in final_mapping.items():
-    logger.info(f"  A[{pos_a}] -> B[{pos_b}]")
-    logger.info(f"    A: {" / ".join(script_a.texts[pos_a:pos_a+3])}")
-    logger.info(f"    B: {" / ".join(script_b.texts[pos_b:pos_b+3])}")
+  # logger.info("\n--- 锚点映射 ---")
+  # for pos_a, pos_b in final_mapping.items():
+  #   logger.info(f"  A[{pos_a}] -> B[{pos_b}]")
+  #   logger.info(f"    A: {" / ".join(script_a.texts[pos_a:pos_a+3])}")
+  #   logger.info(f"    B: {" / ".join(script_b.texts[pos_b:pos_b+3])}")
 
   logger.info("\n--- 匹配统计 ---")
   logger.info(f"剧本A总台词数: {len(script_a.texts)}")

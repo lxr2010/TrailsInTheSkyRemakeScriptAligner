@@ -2,6 +2,7 @@ import logging
 import difflib
 from synonyms import normalize
 from rapidfuzz import fuzz
+from llm import call_llm_for_local_alignment
 logger = logging.getLogger()
 
 def align_linear_gap(sub_a, sub_b, threshold=80):
@@ -89,7 +90,13 @@ def find_stable_anchors(raw_matches:dict[int, list[int]], window_size=2):
 
     stable_anchors = {k:v for k,v in stable_anchors.items() if len(b_to_a_map[v]) == 1}
 
-    return stable_anchors
+    unwrapped_anchors = {}
+    for k in stable_anchors.keys():
+        unwrapped_anchors[k] = stable_anchors[k]
+        unwrapped_anchors[k + 1] = stable_anchors[k] + 1
+        unwrapped_anchors[k + 2] = stable_anchors[k] + 2
+
+    return unwrapped_anchors
 
 def process_with_anchors(script_a, script_b, matches):
     # 1. 提取所有 100% 分数的锚点
@@ -99,76 +106,109 @@ def process_with_anchors(script_a, script_b, matches):
         
     stable_anchors: dict[int,int] = find_stable_anchors(raw_matches)
     # 2. 按位置排序
-    final_mapping = {}
-    pos_a_list = sorted(stable_anchors.keys())
-    stable_anchors_sorted = [(pos_a, stable_anchors[pos_a]) for pos_a in pos_a_list]
-    gaps = []
-    
-    for k in range(len(stable_anchors_sorted) - 1):
-        curr_a, curr_b = stable_anchors_sorted[k]
-        next_a, next_b = stable_anchors_sorted[k + 1]
 
-        # 保存起点锚点
-        final_mapping[curr_a] = curr_b
-        
-        gap_a = next_a - curr_a
-        gap_b = next_b - curr_b
+    def compute_gaps(anchors):
+        final_mapping = {}
+        pos_a_list = sorted(anchors.keys())
+        anchors_sorted = [(pos_a, anchors[pos_a]) for pos_a in pos_a_list]
+        gaps = []
+        for k in range(len(anchors_sorted) - 1):
+            curr_a, curr_b = anchors_sorted[k]
+            next_a, next_b = anchors_sorted[k + 1]
+            # 保存起点锚点
+            final_mapping[curr_a] = curr_b
+            gap_a = next_a - curr_a
+            gap_b = next_b - curr_b
+            # 情况 1: 完美连续
+            if gap_a == 1 and gap_b == 1:
+                continue
+            gaps.append((curr_a, curr_b, next_a, next_b))
+        final_mapping[anchors_sorted[-1][0]] = anchors_sorted[-1][1]
+        return final_mapping, gaps
 
-        diff = abs(gap_a - gap_b)
-        
-        # 情况 1：完美连续 (1对1)
-        if gap_a == 1 and gap_b == 1:
-            continue 
-            
-        # 情况 2：局部线性区间 (区间非常近，可能存在微调)
-        elif gap_a > 0 and gap_b > 0 and (diff <= 5 or (diff/gap_a) <= 0.1):
-            logger.info(f"检测到准线性区间: A[{curr_a+1}:{next_a}] vs B[{curr_b+1}:{next_b}]，执行自动对齐...")
-            # 这里的 B 可能比 A 多，也可能比 A 少
-            sub_a = script_a[curr_a + 1 : next_a]
-            sub_b = script_b[curr_b + 1 : next_b]
+    def update_matches_linear(anchors):
+        final_mapping, gaps = compute_gaps(anchors)
+        for gap in gaps:
+            curr_a, curr_b, next_a, next_b = gap
+            gap_a = next_a - curr_a
+            gap_b = next_b - curr_b
+            diff = abs(gap_a - gap_b)
+            # 情况 2：局部线性区间 (区间非常近，可能存在微调)
+            if gap_a > 0 and gap_b > 0 and (diff <= 5 or (diff/gap_a) <= 0.1):
+                logger.info(f"检测到准线性区间: A[{curr_a+1}:{next_a}] vs B[{curr_b+1}:{next_b}]，执行自动对齐...")
+                # 这里的 B 可能比 A 多，也可能比 A 少
+                sub_a = script_a[curr_a + 1 : next_a]
+                sub_b = script_b[curr_b + 1 : next_b]
 
-            local_map = align_linear_gap(sub_a, sub_b)
-            for rel_a, rel_b in local_map.items():
-                final_mapping[curr_a + 1 + rel_a] = curr_b + 1 + rel_b
-
-
-        elif False:
-            # 这里的 B 可能比 A 多，也可能比 A 少
-            # 提取这一小段内容交给 LLM
-            sub_a = script_a[curr_a + 1 : next_a]
-            sub_b = script_b[curr_b + 1 : next_b]
-
-          
-            logger.info(f"发现模糊区间: A[{curr_a+1}:{next_a}] -> B[{curr_b+1}:{next_b}]，调用 LLM...")
-            for i, line in enumerate(sub_a):
-                logger.info(f"  A[{curr_a+1+i}]: {line}")
-            for i, line in enumerate(sub_b):
-                logger.info(f"  B[{curr_b+1+i}]: {line}")
-            
-
-
-            # 调用 LLM 获取局部对齐结果
-            # 返回格式建议为 {relative_idx_a: relative_idx_b}
-            local_map = call_llm_for_local_alignment(sub_a, sub_b)
-            
-            # 将相对坐标转换为绝对坐标存入 final_mapping
-            for rel_a, rel_b in local_map.items():
-                if rel_b is not None:
+                local_map = align_linear_gap(sub_a, sub_b)
+                for rel_a, rel_b in local_map.items():
                     final_mapping[curr_a + 1 + rel_a] = curr_b + 1 + rel_b
-      
-        # 情况 3：跨度过大
-        else:
-            # 这种情况下，两个锚点之间可能跨场次了，保持原状，
-            # 后续可以使用全量 Top-K 检索来补丁
-            logger.info(f"锚点区间跨度太大: A[{curr_a+1}:{next_a}] -> B[{curr_b+1}:{next_b}]")
-            gaps.append((gap_a, gap_b))
+            else:
+                continue
+        return final_mapping
+
+    stable_anchors = update_matches_linear(stable_anchors)
+
+    def update_matches_llm(anchors):
+        final_mapping, gaps = compute_gaps(anchors)
+        for gap in gaps:
+            curr_a, curr_b, next_a, next_b = gap
+            gap_a = next_a - curr_a
+            gap_b = next_b - curr_b
+            diff = abs(gap_a - gap_b)
+            
+            # 情况 2：小范围的近似线性区间，交给LLM
+            if gap_a > 1 and gap_b > 1 and (gap_a + gap_b) < 42:
+                # 这里的 B 可能比 A 多，也可能比 A 少
+                # 提取这一小段内容交给 LLM
+                sub_a = script_a[curr_a + 1 : next_a]
+                sub_b = script_b[curr_b + 1 : next_b]
+
+              
+                logger.info(f"发现模糊区间: A[{curr_a+1}:{next_a}] -> B[{curr_b+1}:{next_b}]，调用 LLM...")
+                for i, line in enumerate(sub_a):
+                    logger.info(f"  A[{i}]: {line}")
+                for i, line in enumerate(sub_b):
+                    logger.info(f"  B[{i}]: {line}")
+                
+                # 调用 LLM 获取局部对齐结果
+                # 返回格式建议为 {relative_idx_a: relative_idx_b}
+                local_alignment: list[dict] = call_llm_for_local_alignment(sub_a, sub_b)
+                # alignment: list[dict] = [{"a": [0], "b": [0]}, {"a": [1], "b": [1, 2]}]
+                # Only keep the one-one match
+                local_map = {}
+                for item in local_alignment:
+                    if item['a'] is None or item['b'] is None:
+                        logger.info(f"  A[{item['a']}] -> B[{item['b']}] (略过)")
+                        continue
+                    if len(item['a']) == 1 and len(item['b']) == 1 and item['a'][0] is not None and item['b'][0] is not None:
+                        logger.info(f"  A[{item['a'][0]}] -> B[{item['b'][0]}]")
+                        local_map[item['a'][0]] = item['b'][0]
+                    else:
+                        logger.info(f"  A[{",".join(map(str, item['a']))}] -> B[{",".join(map(str, item['b']))}] (略过)")
+                
+                # 将相对坐标转换为绝对坐标存入 final_mapping
+                for rel_a, rel_b in local_map.items():
+                    if rel_b is not None and rel_a is not None:
+                        final_mapping[curr_a + 1 + rel_a] = curr_b + 1 + rel_b
+
+            else:
+              continue
+        return final_mapping
+
+    stable_anchors = update_matches_llm(stable_anchors)
+
+    _ , gaps = compute_gaps(stable_anchors)
+    # 情况 3：跨度过大
+    # 这种情况下，两个锚点之间可能跨场次了，保持原状，
+    # 后续可以使用全量 Top-K 检索来补丁
+    for curr_a, curr_b, next_a, next_b in gaps:
+        logger.info(f"未处理锚点区间: A[{curr_a+1}:{next_a}] -> B[{curr_b+1}:{next_b}]")
+
     
     with open("gaps.json", "w") as f:
-      import json
-      json.dump(gaps, f, indent=2)
-
-    # 处理最后一个锚点
-    final_mapping[stable_anchors_sorted[-1][0]] = stable_anchors_sorted[-1][1]
+        import json
+        json.dump(gaps, f, indent=2)
     
-    return final_mapping
+    return stable_anchors
 

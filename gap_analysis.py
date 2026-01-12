@@ -27,7 +27,7 @@ def analyze_gap_distribution(confirmed_anchors):
     with open("gaps.json", "r") as f:
       gaps = json.loads(f.read())
 
-    gaps = [(g[0], g[1]) for g in gaps]
+    gaps = [(g[2] - g[0],g[3] - g[1]) for g in gaps]
     
     # 使用 Counter 统计频次
     dist = Counter(gaps)

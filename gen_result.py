@@ -89,9 +89,9 @@ def explain_llm_alignments(script_a: RemakeScript, script_b: Script):
         explained['b'] = [ curr_b + 1 + rel_b for rel_b in alignment.get('b') or [] ]
         explained['score'] = alignment.get('score',0.0)
         explained['reason'] = alignment.get('reason','')
-        # replace reason's all substrings "A[{rel_a}]" to "A[{script_a[rel_a + 1 + curr_a].id}]" and "B[{rel_b}]" to "B[{script_b[rel_b + 1 + curr_b].script_id}]"
+        # replace reason's all substrings "A[{rel_a}]" to "A[{script_a[rel_a + 1 + curr_a].remake_voice_id or .id}]" and "B[{rel_b}]" to "B[{script_b[rel_b + 1 + curr_b].script_id}]"
         for rel_a in alignment.get('a') or []:
-          explained['reason'] = explained['reason'].replace(f"A[{rel_a}]", f"A[{script_a[rel_a + 1 + curr_a].id}]")
+          explained['reason'] = explained['reason'].replace(f"A[{rel_a}]", f"A[{script_a[rel_a + 1 + curr_a].remake_voice_id or script_a[rel_a + 1 + curr_a].id}]")
         for rel_b in alignment.get('b') or []:
           explained['reason'] = explained['reason'].replace(f"B[{rel_b}]", f"B[{script_b[rel_b + 1 + curr_b].script_id}]")
         for pos_a in explained['a']:
@@ -119,7 +119,7 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript, fin
     rows_to_write = []
     for pos_a, line_a in enumerate(script_a) :
       row_to_w = []
-      row_to_w.append(line_a.id)
+      row_to_w.append(line_a.remake_voice_id or line_a.id)
       row_to_w.append(line_a.filebase)
       row_to_w.append(line_a.lineno)
       row_to_w.append(line_a.lineno_corr)
@@ -148,7 +148,7 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript, fin
         # 3. LLM Score.
         anno = ""
         if len(final_matches[pos_a]) > 1:
-          anno += "其他候补ScriptId: " + ",".join([str(script_b[i].script_id) for i in final_matches[pos_a][1:]])
+          anno += "其他候补ScriptId(VoiceId): " + ",".join([f"{script_b[i].script_id}({script_b[i].voice_id})" for i in final_matches[pos_a][1:]])
         if pos_a in llm_explanations:
           anno += ";LLM解释: " + llm_explanations[pos_a]['reason']
           anno += ";LLM得分: " + str(llm_explanations[pos_a]['score'])
@@ -163,7 +163,8 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript, fin
         row_to_w.append("") # OldVoiceText
         anno = ""
         if pos_a in llm_explanations:
-          anno += "LLM解释: " + llm_explanations[pos_a]['reason']
+          anno += "LLM推测ScriptId(VoiceId): " + ",".join([f"{script_b[i].script_id}({script_b[i].voice_id})" for i in llm_explanations[pos_a]['b']])
+          anno += ";LLM解释: " + llm_explanations[pos_a]['reason']
           anno += ";LLM得分: " + str(llm_explanations[pos_a]['score'])
         row_to_w.append(anno)
       rows_to_write.append(row_to_w)

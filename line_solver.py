@@ -30,57 +30,6 @@ def store_cached_llm_segment(llm_cache):
 def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anchors:dict[int,int]):
 
   llm_cache = load_cached_llm_segment()
-  
-  for match in matches:
-    pos_a = match['pos_a']
-    if pos_a in anchors.keys() and pos_a + 1 in anchors.keys() and pos_a + 2 in anchors.keys():
-      continue
-      logger.info(f"窗口匹配：{pos_a}->{anchors[pos_a]}")
-      logger.info(f"  内容: {match['text_a']}")
-      if not any(m['pos_b'] == anchors[pos_a] for m in match['matches']):
-        logger.info("  匹配位于Top-3之外")
-      for i, m in enumerate(match['matches']):
-          logger.info(f"  Top-{i+1} 匹配 (B第 {m['pos_b']} 行, 分数 {m['score']}%):")
-          logger.info(f"    {m['text_b']}")
-
-    elif pos_a in anchors.keys():
-      continue
-      logger.info(f"仅本行匹配：{pos_a}->{anchors[pos_a]}")
-      logger.info(f"  {pos_a}内容: {match['text_a']}")
-      if not any(m['pos_b'] == anchors[pos_a] for m in match['matches']):
-        logger.info(f"  {pos_a}匹配位于Top-3之外")
-      for i, m in enumerate(match['matches']):
-          logger.info(f"  Top-{i+1} 匹配 (B第 {m['pos_b']} 行, 分数 {m['score']}%):")
-          logger.info(f"    {m['text_b']}")
-      # 检查 pos_a + 1
-      if pos_a + 1 < len(script_a):
-        next_match = next((m for m in matches if m['pos_a'] == pos_a + 1), None)
-        if next_match:
-          if pos_a + 1 in anchors.keys():
-            logger.info(f"  {pos_a + 1}已匹配->{anchors[pos_a + 1]}")
-            if not any(m['pos_b'] == anchors[pos_a + 1] for m in next_match['matches']):
-              logger.info(f"  {pos_a + 1}匹配位于Top-3之外")
-          else:
-            logger.info(f"  {pos_a + 1}无匹配")           
-          logger.info(f"  {pos_a + 1}内容: {next_match['text_a']}") 
-          for i, m in enumerate(next_match['matches']):
-            logger.info(f"  Top-{i+1} 匹配 (B第 {m['pos_b']} 行, 分数 {m['score']}%):")
-            logger.info(f"    {m['text_b']}")
-
-      # 检查 pos_a + 2
-      if pos_a + 2 < len(script_a):
-        next_match2 = next((m for m in matches if m['pos_a'] == pos_a + 2), None)
-        if next_match2:
-          if pos_a + 2 in anchors.keys():
-            logger.info(f"  {pos_a + 2}已匹配->{anchors[pos_a + 2]}")
-            if not any(m['pos_b'] == anchors[pos_a + 2] for m in next_match2['matches']):
-              logger.info(f"  {pos_a + 2}匹配位于Top-3之外")
-          else:
-            logger.info(f"  {pos_a + 2}无匹配")
-          logger.info(f"  {pos_a + 2}内容: {next_match2['text_a']}")
-          for i, m in enumerate(next_match2['matches']):
-            logger.info(f"  Top-{i+1} 匹配 (B第 {m['pos_b']} 行, 分数 {m['score']}%):")
-            logger.info(f"    {m['text_b']}")
 
   def get_norm_text_b(pos_b, window_size=3):
     return " / ".join(map(normalize, script_b[pos_b-(window_size//2):pos_b+(window_size//2)+1]))

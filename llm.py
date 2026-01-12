@@ -335,7 +335,6 @@ def test_local_alignment():
     ]
     alignment = call_llm_for_local_alignment(sub_a, sub_b)
     print(alignment)
-    # 输出预想: [{"a": [0, 1], "b": [0]}]
 
 if __name__ == "__main__":
     test_match_segment()

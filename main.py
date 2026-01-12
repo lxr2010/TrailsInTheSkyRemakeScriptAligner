@@ -51,18 +51,18 @@ def main():
   # 剧本 A 翻译文本
   trans_a = RemakeScript("scena_data_sc_Command.json")
 
-  # refresh_matches(script_a, script_b)
+  refresh_matches(script_a, script_b)
 
   with open("matches.json","r") as f:
     matches = json.loads(f.read())
 
-  # optimize_with_anchors(script_a, script_b, matches)
+  optimize_with_anchors(script_a, script_b, matches)
 
   with open("anchors.json", "r") as f:
     final_mapping = json.loads(f.read())
     final_mapping = { int(k):v for k,v in final_mapping.items() }
 
-  # solve_gaps(script_a, script_b, matches, final_mapping)
+  solve_gaps(script_a, script_b, matches, final_mapping)
 
   with open("top_k_matches.json", "r") as f:
     top_k_matches = json.loads(f.read())

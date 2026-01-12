@@ -98,7 +98,7 @@ def find_stable_anchors(raw_matches:dict[int, list[int]], window_size=2):
 
     return unwrapped_anchors
 
-def process_with_anchors(script_a, script_b, matches):
+def process_with_anchors(script_a, script_b, matches, llm_cache=None):
     # 1. 提取所有 100% 分数的锚点
     raw_matches = {}
     for match in matches:
@@ -149,7 +149,27 @@ def process_with_anchors(script_a, script_b, matches):
 
     stable_anchors = update_matches_linear(stable_anchors)
 
-    def update_matches_llm(anchors):
+    def load_cached_llm_alignment():
+        import json
+        import os
+        if not os.path.exists("llm_alignments.json"):
+            return {}
+        try:
+            with open("llm_alignments.json", "r") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load cache: {e}")
+            return {}
+
+    def store_cached_llm_alignment(llm_cache):
+        import json
+        with open("llm_alignments.json", "w") as f:
+            json.dump(llm_cache, f, indent=2, ensure_ascii=False)
+
+    if llm_cache is None:
+        llm_cache = load_cached_llm_alignment()
+
+    def update_matches_llm(anchors, llm_cache: dict[str, Any]):
         final_mapping, gaps = compute_gaps(anchors)
         for gap in gaps:
             curr_a, curr_b, next_a, next_b = gap
@@ -170,11 +190,49 @@ def process_with_anchors(script_a, script_b, matches):
                     logger.info(f"  A[{i}]: {line}")
                 for i, line in enumerate(sub_b):
                     logger.info(f"  B[{i}]: {line}")
-                
-                # 调用 LLM 获取局部对齐结果
-                # 返回格式建议为 {relative_idx_a: relative_idx_b}
-                local_alignment: list[dict] = call_llm_for_local_alignment(sub_a, sub_b)
-                # alignment: list[dict] = [{"a": [0], "b": [0]}, {"a": [1], "b": [1, 2]}]
+
+                gap_key = f"{curr_a}:{next_a}-{curr_b}:{next_b}"
+                local_alignment: list[dict] | None = llm_cache.get(gap_key, None)
+
+                if local_alignment is None:        
+                    # 调用 LLM 获取局部对齐结果
+                    # 返回格式建议为 {relative_idx_a: relative_idx_b}
+                    local_alignment = call_llm_for_local_alignment(sub_a, sub_b)
+                    # alignment: list[dict] = [{"a": [0], "b": [0], "score": 1.0, "reason": "文本一致"}, {"a": [1], "b": [1, 2], "score": 1.0, "reason": "台词拆分"}]
+                    # 合并多个指向B剧本同一行的结果
+                    b_to_a_map = {}
+                    b_to_score = {}
+                    b_to_reason = {}
+                    none_alignments = []
+                    for item in local_alignment:
+                        if item['a'] is None or item['b'] is None:
+                            none_alignments.append(item)
+                            continue
+                        for b_idx in item['b']:
+                            if b_idx is not None:
+                                b_to_a_map.setdefault(b_idx, [])
+                                b_to_score.setdefault(b_idx, 1.0)
+                                b_to_reason.setdefault(b_idx, '')
+                                for a_idx in item['a']:
+                                    if a_idx is not None:
+                                        b_to_a_map[b_idx].append(a_idx)
+                                    b_to_score[b_idx] = min(item.get('score', 1.0), b_to_score[b_idx])
+                                    b_to_reason[b_idx] += item.get('reason', '')
+                    
+                    # 重新构造 local_alignment
+                    local_alignment = []
+                    for b_idx, a_indices in b_to_a_map.items():
+                        local_alignment.append({
+                            "a": a_indices, 
+                            "b": [b_idx],
+                            "score": b_to_score.get(b_idx, 1.0),
+                            "reason": b_to_reason.get(b_idx, '')
+                        })
+                    local_alignment.extend(none_alignments)
+
+                    if gap_key not in llm_cache:
+                        llm_cache[gap_key] = local_alignment
+
                 # Only keep the one-one match
                 local_map = {}
                 for item in local_alignment:
@@ -185,7 +243,7 @@ def process_with_anchors(script_a, script_b, matches):
                         logger.info(f"  A[{item['a'][0]}] -> B[{item['b'][0]}]")
                         local_map[item['a'][0]] = item['b'][0]
                     else:
-                        logger.info(f"  A[{",".join(map(str, item['a']))}] -> B[{",".join(map(str, item['b']))}] (略过)")
+                        logger.info(f"  A[{','.join(map(str, item['a']))}] -> B[{','.join(map(str, item['b']))}] (略过)")
                 
                 # 将相对坐标转换为绝对坐标存入 final_mapping
                 for rel_a, rel_b in local_map.items():
@@ -196,7 +254,7 @@ def process_with_anchors(script_a, script_b, matches):
               continue
         return final_mapping
 
-    stable_anchors = update_matches_llm(stable_anchors)
+    stable_anchors = update_matches_llm(stable_anchors, llm_cache)
 
     _ , gaps = compute_gaps(stable_anchors)
     # 情况 3：跨度过大
@@ -205,7 +263,8 @@ def process_with_anchors(script_a, script_b, matches):
     for curr_a, curr_b, next_a, next_b in gaps:
         logger.info(f"未处理锚点区间: A[{curr_a+1}:{next_a}] -> B[{curr_b+1}:{next_b}]")
 
-    
+    store_cached_llm_alignment(llm_cache)
+
     with open("gaps.json", "w") as f:
         import json
         json.dump(gaps, f, indent=2)

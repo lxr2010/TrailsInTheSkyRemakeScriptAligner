@@ -9,8 +9,11 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 class ScriptSearcher:
-    def __init__(self, threshold=0.4):
+    def __init__(self, threshold=0.4, window_size=3):
         self.threshold = threshold
+        self.window_size = int(window_size)
+        if self.window_size < 1:
+            raise ValueError("window_size must be >= 1")
         self.lsh = MinHashLSH(threshold=threshold, num_perm=128)
         self.b_windows = {} # 存放剧本 B 的窗口内容
         self.script_b_raw = []
@@ -37,9 +40,9 @@ class ScriptSearcher:
         self.script_b_raw = script_b
         logger.info(f"正在索引剧本 B (共 {len(script_b)} 行)...")
         
-        for i in range(len(script_b) - 2):
+        for i in range(len(script_b) - self.window_size + 1):
             # 组合三行作为搜索单位
-            combined = "".join([self._clean(line) for line in script_b[i:i+3]])
+            combined = "".join([self._clean(line) for line in script_b[i:i+self.window_size]])
             if len(combined) < 3: continue
             
             m = self._get_minhash(combined)
@@ -53,8 +56,8 @@ class ScriptSearcher:
         
         logger.info(f"开始在 B 中检索 A 的内容...")
         # 为了覆盖所有台词，我们每行都作为起始点取 3 行窗口进行检索
-        for i in range(len(script_a) - 2):
-            raw_a_lines = script_a[i:i+3]
+        for i in range(len(script_a) - self.window_size + 1):
+            raw_a_lines = script_a[i:i+self.window_size]
             clean_a = "".join([self._clean(line) for line in raw_a_lines])
             
             if len(clean_a) < 3: continue
@@ -74,7 +77,7 @@ class ScriptSearcher:
 
                 if score == 100 :
                     norm_a = normalize(raw_a_lines)
-                    norm_b = normalize(self.script_b_raw[pos_b:pos_b+3])
+                    norm_b = normalize(self.script_b_raw[pos_b:pos_b+self.window_size])
                     if norm_a != norm_b :
                       logger.info(f"发现不匹配的100分: {norm_a} -> {norm_b}")
                       score = 85
@@ -83,7 +86,7 @@ class ScriptSearcher:
                 scored_candidates.append({
                     "pos_b": pos_b,
                     "score": round(score, 2),
-                    "text_b": " / ".join(self.script_b_raw[pos_b:pos_b+3])
+                    "text_b": " / ".join(self.script_b_raw[pos_b:pos_b+self.window_size])
                 })
                 
 

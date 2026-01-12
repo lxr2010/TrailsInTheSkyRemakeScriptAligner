@@ -41,7 +41,7 @@ class RemakeScript :
     self.texts = [line.text for line in self.lines]
 
 def refresh_matches(script_a, script_b):
-  searcher = ScriptSearcher(threshold=0.3)
+  searcher = ScriptSearcher(threshold=0.3, window_size=3)
   searcher.build_b_index(script_b.texts)
   matches = searcher.search_from_a(script_a.texts, top_k=3)
   with open("matches.json", "w") as f:

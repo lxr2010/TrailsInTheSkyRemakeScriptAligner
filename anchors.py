@@ -169,7 +169,7 @@ def process_with_anchors(script_a, script_b, matches, llm_cache=None):
     if llm_cache is None:
         llm_cache = load_cached_llm_alignment()
 
-    def update_matches_llm(anchors, llm_cache: dict[str, Any]):
+    def update_matches_llm(anchors, llm_cache: dict[str]):
         final_mapping, gaps = compute_gaps(anchors)
         for gap in gaps:
             curr_a, curr_b, next_a, next_b = gap

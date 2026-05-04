@@ -1,6 +1,6 @@
 import json
 import logging 
-from models import RemakeScript, Script, RemakeLine, Line
+from models import RemakeScript, Script, RemakeLine, Line, UnscriptedConversation, UnscriptedLine
 from llm import call_llm_to_identify_redundant, call_llm_to_verify_alignment
 import csv
 
@@ -109,7 +109,7 @@ def explain_llm_alignments(script_a: RemakeScript, script_b: Script):
   except FileNotFoundError:
     logger.error("At least one of LLM cache file not found.")
 
-def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript, final_matches:dict[int,list], llm_explanations:dict, match_result_csv:str):
+def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript, unscripted_b: UnscriptedConversation, final_matches:dict[int,list], additional_matches:dict[int,int], llm_explanations:dict, match_result_csv:str):
   # gpt-4o-mini等大模型做不到精准匹配中日翻译，所以无法实现自动匹配中日翻译条目。
   # trans_a_aligned = solve_alignment(script_a, trans_a)
   trans_map = { t.id : t for t in trans_a}
@@ -154,13 +154,24 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript, fin
           anno += ";LLM得分: " + str(llm_explanations[pos_a]['score'])
         row_to_w.append(anno)
       else:
-        row_to_w.append("") # Script ID
-        row_to_w.append("") # Voice ID
-        row_to_w.append("unmatched")
-        row_to_w.append("voice") # voice category
-        row_to_w.append(trans_text) # RemakeVoiceTranslation
-        row_to_w.append(line_a.text) # RemakeVoiceText
-        row_to_w.append("") # OldVoiceText
+        if pos_a in additional_matches:
+          best_pos_b = additional_matches[pos_a]
+          uline_b:UnscriptedLine = unscripted_b[best_pos_b]
+          row_to_w.append("") # Script ID
+          row_to_w.append("ch" + uline_b.voice_id)
+          row_to_w.append("matched") # match type
+          row_to_w.append("voice") # voice category
+          row_to_w.append(trans_text) # RemakeVoiceTranslation
+          row_to_w.append(line_a.text) # RemakeVoiceText
+          row_to_w.append(uline_b.text) # OldVoiceText
+        else:
+          row_to_w.append("") # Script ID
+          row_to_w.append("") # Voice ID
+          row_to_w.append("unmatched")
+          row_to_w.append("voice") # voice category
+          row_to_w.append(trans_text) # RemakeVoiceTranslation
+          row_to_w.append(line_a.text) # RemakeVoiceText
+          row_to_w.append("") # OldVoiceText
         anno = ""
         if pos_a in llm_explanations:
           anno += "LLM推测ScriptId(VoiceId): " + ",".join([f"{script_b[i].script_id}({script_b[i].voice_id})" for i in llm_explanations[pos_a]['b']])

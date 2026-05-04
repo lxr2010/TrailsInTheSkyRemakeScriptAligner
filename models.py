@@ -2,7 +2,23 @@ from pydantic import BaseModel, TypeAdapter, model_validator
 from pathlib import Path
 import json
 
-class Line(BaseModel):
+class UnscriptedLine(BaseModel):
+    """
+    {
+        "voice_id": "0010000793V",
+        "text": "お昼頃か ギルドの研修の真っ最中ねー"
+    }
+    """
+    voice_id: str
+    text: str
+    @property
+    def scene_id(self):
+        return self.voice_id[3:6]
+    @property
+    def scene_seq_id(self):
+        return int(self.voice_id[6:10] or "-1")
+
+class Line(UnscriptedLine):
     """
     {
         "character_id": "0xF",
@@ -15,18 +31,10 @@ class Line(BaseModel):
     }
     """
     character_id: str
-    voice_id: str
     script_id: int
-    text: str
     source_file: str
     context_prev: str
     context_next: str
-    @property
-    def scene_id(self):
-        return self.voice_id[3:6]
-    @property
-    def scene_seq_id(self):
-        return int(self.voice_id[6:10] or "-1")
 
 class Conversation(BaseModel):
     lines: list[Line]
@@ -122,9 +130,23 @@ class RemakeConversation(BaseModel):
     def __iter__(self):
         return iter(self.lines)
 
+class UnscriptedConversation:
+    lines: list[UnscriptedLine]
+    def __init__(self,file:str) -> None:
+        with open(file, "r", encoding="utf-8") as f:
+            adapter = TypeAdapter(list[UnscriptedLine])
+            self.lines = adapter.validate_json(f.read())
+        self.texts = [line.text for line in self.lines]
+    def __len__(self) -> int:
+        return len(self.lines)
+    def __getitem__(self, index: int) -> UnscriptedLine:
+        return self.lines[index]
+    def __iter__(self):
+        return iter(self.lines)
+
 class Script :
   def __init__(self, file:str) -> None:
-    with open(file, "r") as f:
+    with open(file, "r", encoding="utf-8") as f:
       adapter = TypeAdapter(list[Line])
       self.lines = adapter.validate_json(f.read())
     self.texts = [line.text for line in self.lines]
@@ -140,11 +162,14 @@ class RemakeScript :
   lines: list[RemakeLine]
   def __init__(self, file:str) -> None:
     self.lines = []
-    with open(file, "r") as f:
+    try:
+      with open(file, "r", encoding="utf-8") as f:
         commands: list[dict] = json.load(f)
         for i, entry in enumerate(commands):
-            remake_line = RemakeLine(id=self.NEW_ID_START + i, **entry)
-            self.lines.append(remake_line)
+          remake_line = RemakeLine(id=self.NEW_ID_START + i, **entry)
+          self.lines.append(remake_line)
+    except FileNotFoundError:
+      print(f"File {file} not found.")
     self.texts = [line.text for line in self.lines]
   def __len__(self) -> int:
     return len(self.lines)
@@ -155,9 +180,16 @@ class RemakeScript :
     
 
 def test_lines():
-    with open("script_data.json", "r") as f:
+    with open("script_data.json", "r", encoding="utf-8") as f:
         # The JSON file is a list of objects, so we use TypeAdapter to validate it as a list[Line]
         adapter = TypeAdapter(list[Line])
+        lines = adapter.validate_json(f.read())
+        for line in lines:
+            print(line)
+
+def test_unscriptedline():
+    with open("whisperx_fc_missing_simple.json", "r", encoding="utf-8") as f:
+        adapter = TypeAdapter(list[UnscriptedLine])
         lines = adapter.validate_json(f.read())
         for line in lines:
             print(line)
@@ -191,4 +223,5 @@ if __name__ == "__main__":
     # test_lines()
     # test_voice_id()
     # test_remake_command()
-    test_remake_line()
+    # test_remake_line()
+    test_unscriptedline()

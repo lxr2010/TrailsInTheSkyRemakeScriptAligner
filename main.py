@@ -1,4 +1,4 @@
-from models import RemakeLine, Line, Script, RemakeScript 
+from models import RemakeLine, Line, Script, RemakeScript, UnscriptedConversation 
 from script_searcher import ScriptSearcher
 from anchors import process_with_anchors
 from synonyms import get_potential_synonyms
@@ -26,22 +26,36 @@ def refresh_matches(script_a, script_b):
   searcher = ScriptSearcher(threshold=0.3, window_size=3)
   searcher.build_b_index(script_b.texts)
   matches = searcher.search_from_a(script_a.texts, top_k=3)
-  with open("matches.json", "w") as f:
-    json.dump(matches, f, indent=2)
+  with open("matches.json", "w", encoding="utf-8") as f:
+    json.dump(matches, f, indent=2, ensure_ascii=False)
 
 def optimize_with_anchors(script_a, script_b, matches):
   final_mapping = process_with_anchors(script_a.texts, script_b.texts, matches)
-  with open("anchors.json", "w") as f:
-    json.dump(final_mapping, f, indent=2)
+  with open("anchors.json", "w", encoding="utf-8") as f:
+    json.dump(final_mapping, f, indent=2, ensure_ascii=False)
 
 def solve_gaps(script_a, script_b, matches, anchors):
   final_mapping = single_match(script_a.texts, script_b.texts, matches, anchors)
-  with open("top_k_matches.json", "w") as f:
-    json.dump(final_mapping, f, indent=2)
+  with open("top_k_matches.json", "w", encoding="utf-8") as f:
+    json.dump(final_mapping, f, indent=2, ensure_ascii=False)
 
-def gen_output(script_a, script_b, trans_a, matches, output_filename):
+def add_unscripted_conversations(script_a, unscripted_b, matches):
+  single_line_searcher = ScriptSearcher(threshold=0.3, window_size=1)
+  single_line_searcher.build_b_index(unscripted_b.texts)
+  unmatched_lines_a = [ (i, l) for i , l in enumerate(script_a.texts) if i not in matches ]
+  if not unmatched_lines_a:
+    additional_mapping = {}
+  else:
+    hit_in_unscripted = single_line_searcher.search_from_a(list(zip(*unmatched_lines_a))[1], top_k=1)
+    additional_mapping = {}
+    for match in hit_in_unscripted:
+      additional_mapping[unmatched_lines_a[match["pos_a"]][0]] = match["matches"][0]["pos_b"]
+  with open("unscripted_matches.json", "w", encoding="utf-8") as f:
+    json.dump(additional_mapping, f, indent=2, ensure_ascii=False)
+
+def gen_output(script_a, script_b, trans_a, unscripted_b, matches, unscripted_matches, output_filename):
   expl = explain_llm_alignments(script_a, script_b)
-  gen_csv(script_a, script_b, trans_a, matches, expl, output_filename)
+  gen_csv(script_a, script_b, trans_a, unscripted_b, matches, unscripted_matches, expl, output_filename)
 
 def main():
   # 剧本 A：原始顺序
@@ -50,25 +64,33 @@ def main():
   script_b = Script("script_data.json")
   # 剧本 A 翻译文本
   trans_a = RemakeScript("scena_data_sc_Command.json")
+  # 剧本 B 中未记录的语音
+  unscripted_b = UnscriptedConversation("whisperx_fc_missing_simple.json")
 
-  refresh_matches(script_a, script_b)
+  # refresh_matches(script_a, script_b)
 
-  with open("matches.json","r") as f:
+  with open("matches.json","r", encoding="utf-8") as f:
     matches = json.loads(f.read())
 
   optimize_with_anchors(script_a, script_b, matches)
 
-  with open("anchors.json", "r") as f:
+  with open("anchors.json", "r", encoding="utf-8") as f:
     final_mapping = json.loads(f.read())
     final_mapping = { int(k):v for k,v in final_mapping.items() }
 
   solve_gaps(script_a, script_b, matches, final_mapping)
 
-  with open("top_k_matches.json", "r") as f:
+  with open("top_k_matches.json", "r", encoding="utf-8") as f:
     top_k_matches = json.loads(f.read())
     top_k_matches = { int(k):v for k,v in top_k_matches.items() }
 
-  gen_output(script_a, script_b, trans_a, top_k_matches, "match_result.csv")
+  add_unscripted_conversations(script_a, unscripted_b, top_k_matches)
+
+  with open("unscripted_matches.json", "r", encoding="utf-8") as f:
+    unscripted_matches = json.loads(f.read())
+    unscripted_matches = { int(k):v for k,v in unscripted_matches.items() }
+
+  gen_output(script_a, script_b, trans_a, unscripted_b, top_k_matches, unscripted_matches, "match_result.csv")
 
   # logger.info("\n--- 匹配结果 ---")
   # for r in matches:

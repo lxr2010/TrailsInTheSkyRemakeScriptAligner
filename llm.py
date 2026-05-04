@@ -99,7 +99,7 @@ B[0]: 何をしている！早く行け！！
 请输出对齐结果 JSON："""
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini", # 或 deepseek-chat, qwen-turbo 等小模型
+            model="deepseek-v4-flash", # 或 deepseek-chat, qwen-turbo 等小模型
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -165,7 +165,7 @@ def match_script_segment(source_segment, candidates):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="deepseek-v4-flash",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps(user_content, ensure_ascii=False)}
@@ -203,7 +203,7 @@ def call_llm_to_identify_redundant(jp_block, tr_block):
 """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # 建议用 mini，处理这类任务性价比最高
+            model="deepseek-v4-flash",  # 建议用 mini，处理这类任务性价比最高
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that outputs only JSON."},
                 {"role": "user", "content": prompt}
@@ -237,7 +237,7 @@ Strict Rules (必须严格执行):
 """
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="deepseek-v4-flash",
             messages=[{"role": "system", "content": "Only output JSON."},
                       {"role": "user", "content": prompt}],
             response_format={"type": "json_object"}

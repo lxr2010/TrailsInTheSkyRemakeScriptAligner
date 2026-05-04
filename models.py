@@ -204,7 +204,7 @@ def test_voice_id():
 
 def test_remake_command():
     NEW_ID_START=50001
-    with open("scena_data_jp_Command_sample.json", "r") as f:
+    with open("scena_data_jp_Command_sample.json", "r", encoding="utf-8") as f:
         adapter = TypeAdapter(list[RemakeCommand])
         lines = adapter.validate_json(f.read())
         for line in lines:
@@ -212,7 +212,7 @@ def test_remake_command():
 
 def test_remake_line():
     NEW_ID_START=50001
-    with open("scena_data_jp_Command.json", "r") as f:
+    with open("scena_data_jp_Command.json", "r", encoding="utf-8") as f:
         commands: list[dict] = json.load(f)
         for i, entry in enumerate(commands):
             remake_line = RemakeLine(id=NEW_ID_START + i, **entry)

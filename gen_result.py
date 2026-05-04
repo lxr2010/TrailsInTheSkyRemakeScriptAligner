@@ -63,9 +63,9 @@ def solve_alignment(jp_list, tr_list):
 
 def explain_llm_alignments(script_a: RemakeScript, script_b: Script):
   try:
-    with open("llm_alignments.json", "r") as f:
+    with open("llm_alignments.json", "r", encoding="utf-8") as f:
       llm_alignments:dict[str:dict] = json.load(f)
-    with open("llm_segments.json", "r") as f:
+    with open("llm_segments.json", "r", encoding="utf-8") as f:
       llm_segments:dict[str:dict] = json.load(f)
       llm_segments = { int(k):v for k,v in llm_segments.items() }
     explanations = {}
@@ -102,7 +102,7 @@ def explain_llm_alignments(script_a: RemakeScript, script_b: Script):
       # match_segment: {"selected_id": int, "confidence":int, "reason": str}
       explanations[key] = {"b": [match_segment['selected_id']], "reason": match_segment['reason'], "score": match_segment['confidence']/100.0}
 
-      with open("llm_explanations.json", "w") as f:
+      with open("llm_explanations.json", "w", encoding="utf-8") as f:
         json.dump(explanations, f, indent=2, ensure_ascii=False)
       return explanations
 

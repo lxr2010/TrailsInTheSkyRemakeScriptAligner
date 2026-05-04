@@ -155,7 +155,7 @@ def process_with_anchors(script_a, script_b, matches, llm_cache=None):
         if not os.path.exists("llm_alignments.json"):
             return {}
         try:
-            with open("llm_alignments.json", "r") as f:
+            with open("llm_alignments.json", "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
             logger.error(f"Failed to load cache: {e}")
@@ -163,7 +163,7 @@ def process_with_anchors(script_a, script_b, matches, llm_cache=None):
 
     def store_cached_llm_alignment(llm_cache):
         import json
-        with open("llm_alignments.json", "w") as f:
+        with open("llm_alignments.json", "w", encoding="utf-8") as f:
             json.dump(llm_cache, f, indent=2, ensure_ascii=False)
 
     if llm_cache is None:
@@ -265,9 +265,9 @@ def process_with_anchors(script_a, script_b, matches, llm_cache=None):
 
     store_cached_llm_alignment(llm_cache)
 
-    with open("gaps.json", "w") as f:
+    with open("gaps.json", "w", encoding="utf-8") as f:
         import json
-        json.dump(gaps, f, indent=2)
+        json.dump(gaps, f, indent=2, ensure_ascii=False)
     
     return stable_anchors
 

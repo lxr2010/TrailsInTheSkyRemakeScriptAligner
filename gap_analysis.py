@@ -24,7 +24,7 @@ def analyze_gap_distribution(confirmed_anchors):
     """
     confirmed_anchors: List of (pos_a, pos_b) sorted by pos_a
     """
-    with open("gaps.json", "r") as f:
+    with open("gaps.json", "r", encoding="utf-8") as f:
       gaps = json.loads(f.read())
 
     gaps = [(g[2] - g[0],g[3] - g[1]) for g in gaps]

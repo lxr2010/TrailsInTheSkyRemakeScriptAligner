@@ -12,7 +12,7 @@ def load_cached_llm_segment():
   if not os.path.exists("llm_segments.json"):
     return {}
   try:
-    with open("llm_segments.json", "r") as f:
+    with open("llm_segments.json", "r", encoding="utf-8") as f:
       obj = json.load(f)
       if isinstance(obj, dict):
         return {int(k):v for k,v in obj.items()}
@@ -24,7 +24,7 @@ def load_cached_llm_segment():
 
 def store_cached_llm_segment(llm_cache):
   import json
-  with open("llm_segments.json", "w") as f:
+  with open("llm_segments.json", "w", encoding="utf-8") as f:
     json.dump(llm_cache, f, indent=2, ensure_ascii=False)
 
 def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anchors:dict[int,int]):

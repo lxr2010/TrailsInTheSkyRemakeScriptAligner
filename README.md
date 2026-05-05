@@ -1,4 +1,4 @@
-# sora-scena-matcher-enhanced
+# Trails In The Sky Script Aligner
 
 空之轨迹1st（Remake）与空之轨迹FC进化版（EVO）台词对齐工具。
 
@@ -530,7 +530,7 @@ flowchart TD
 
 ## English Translation
 
-`sora-scena-matcher-enhanced` is a dialogue alignment toolkit for **Trails in the Sky the 1st (Remake)** and **Trails in the Sky FC Evolution (EVO)**.
+`Trails In The Sky Remake Script Aligner` is a dialogue alignment toolkit for **Trails in the Sky the 1st (Remake)** and **Trails in the Sky FC Evolution (EVO)**.
 
 This project is a refactor of [sora-scena-matcher](https://github.com/lxr2010/sora-scena-matcher), rebuilt to better leverage LLM-based matching.
 The same architecture is also intended to be portable to SC / 3rd and potentially Zero/Ao workflows.

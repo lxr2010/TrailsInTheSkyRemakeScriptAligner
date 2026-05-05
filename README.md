@@ -115,15 +115,16 @@ Get-ChildItem $src -Filter *.dat -File | ForEach-Object {
 
 ### 主脚本
 - `main.py`
-  - 读取输入：
-    - `scena_data_jp_Command.json`（1st 日文）
-    - `script_data.json`（EVO）
-    - `scena_data_sc_Command.json`（1st 简中）
-  - 执行流程：
-    1. `refresh_matches` 生成候选匹配 `matches.json`
-    2. `optimize_with_anchors` 生成锚点 `anchors.json`
-    3. `solve_gaps` 生成补全结果 `top_k_matches.json`
-    4. `gen_output` 生成最终 `match_result.csv`
+  - 输入：
+    - 必需：`scena_data_jp_Command.json`（1st 日文）
+    - 必需：`script_data.json`（EVO）
+    - 可选：`scena_data_sc_Command.json`（1st 简中翻译）
+    - 可选：`additional_voice_fc.json`（脚本外语音转录）
+  - 主流程：
+    1. `load_required_inputs` / `load_optional_inputs`
+    2. `run_core_matching_flow` 生成 `matches.json` / `anchors.json` / `top_k_matches.json`
+    3. `run_additional_voice_flow` 生成 `unscripted_matches.json`（若存在附加语音输入）
+    4. `run_output_flow` 生成最终 `match_result.csv`
 
 ### 三个新增辅助脚本
 - `scena_voice_kuro_extractor.py`
@@ -185,12 +186,234 @@ Get-ChildItem $src -Filter *.dat -File | ForEach-Object {
 4. 生成 EVO 文本数据：`uv run python extract_voice_data.py`
 5. 跑匹配主流程：`uv run python main.py`
 
+`main.py` 当前的输入分为：
+- 必需输入：
+  - `scena_data_jp_Command.json`
+  - `script_data.json`
+- 可选输入：
+  - `scena_data_sc_Command.json`（中文翻译）
+  - `additional_voice_fc.json`（脚本外语音转录）
+
+`main.py` 内部已拆分为几个清晰流程：
+- `load_required_inputs`：加载必需输入
+- `load_optional_inputs`：加载可选输入
+- `run_core_matching_flow`：执行 `matches -> anchors -> top_k`
+- `run_additional_voice_flow`：处理脚本外语音补充匹配
+- `run_output_flow`：生成 `match_result.csv`
+- `log_matching_stats`：输出统计信息
+
+### `main.py` 默认行为
+
+直接运行：
+
+```powershell
+uv run python main.py
+```
+
+默认逻辑：
+- 会先检查各步骤输出文件是否已存在。
+- 若输出已存在，则自动跳过对应步骤。
+- 若输出不存在，则执行该步骤。
+- 若 `scena_data_sc_Command.json` 不存在，则跳过中文翻译。
+- 若 `additional_voice_fc.json` 不存在，则跳过脚本外语音补充匹配。
+
+### 从指定步骤开始
+
+可以通过 `--from-step` 指定从某一步开始：
+
+```powershell
+uv run python main.py --from-step top_k
+```
+
+可用步骤名：
+- `matches`
+- `anchors`
+- `top_k`
+- `additional`
+- `output`
+
+说明：
+- 如果你指定从某一步开始，但前置所需的 `.json` 中间文件不存在，程序会自动回退到最早缺失的前置步骤开始执行。
+
+### 常用参数
+
+- `--remake-jp`
+  - Remake 日文输入
+  - 默认：`scena_data_jp_Command.json`
+
+- `--script-data`
+  - EVO Script 文本输入
+  - 默认：`script_data.json`
+
+- `--translation`
+  - Remake 中文翻译输入，可选
+  - 默认：`scena_data_sc_Command.json`
+
+- `--additional-voice`
+  - 脚本外语音转录输入，可选
+  - 默认：`additional_voice_fc.json`
+
+- `--matches-json`
+  - `matches` 步骤输出
+  - 默认：`matches.json`
+
+- `--anchors-json`
+  - `anchors` 步骤输出
+  - 默认：`anchors.json`
+
+- `--top-k-json`
+  - `top_k` 步骤输出
+  - 默认：`top_k_matches.json`
+
+- `--unscripted-matches-json`
+  - `additional` 步骤输出
+  - 默认：`unscripted_matches.json`
+
+- `--output-csv`
+  - 最终输出 CSV
+  - 默认：`match_result.csv`
+
 输出核心文件：
 - `match_result.csv`
 - `matches.json` / `anchors.json` / `top_k_matches.json`
+- `unscripted_matches.json`（存在附加语音输入时）
 - `llm_*.json`（LLM缓存）
 
+## 7. 脚本外语音转录 JSON（`additional_voice_fc.json`）
+
+为了补充 **EVO 版本中存在、但没有出现在 `script_data.json` / Script 文本中的语音**，当前流程支持额外读取一份脚本外语音转录 JSON。
+
+这些语音的来源与处理方式如下：
+- 先分析补丁音频目录，找出存在于 EVO 音频文件中、但未被 Script 文本收录的语音编号。
+- 再使用 WhisperX 的 `large-v2` 模型、`ja` 语言，对这些音频逐条转录。
+- 最终将 `voice_id` 与对应转录文本 `text` 保存为 `additional_voice_fc.json`。
+
+说明：
+- `main.py` 当前默认直接读取工作目录下的 `additional_voice_fc.json`：
+  - `unscripted_b = UnscriptedConversation("additional_voice_fc.json")`
+- 这个输入是**可选的**。
+- 如果文件不存在，程序会自动跳过脚本外语音补充匹配流程。
+- 如果你的文件实际放在其他目录，可以通过 `--additional-voice <path>` 指定。
+
+### JSON 格式示例
+
+```json
+[
+  {
+    "voice_id": "0010000782V",
+    "text": "おはよう、リノンさん!"
+  },
+  {
+    "voice_id": "0010000785V",
+    "text": "えっ、新しいの入ってるの?"
+  },
+  {
+    "voice_id": "0010060643V",
+    "text": ""
+  }
+]
+```
+
+字段说明：
+- `voice_id`
+  - EVO 语音编号。
+  - 当前数据中一般保留结尾的 `V`，例如 `0010000782V`。
+- `text`
+  - WhisperX 转录得到的日文文本。
+  - 允许为空字符串，表示该音频未能得到有效文本，或内容主要为喘息、语气词、杂音等。
+
+使用方式：
+- 当 `main.py` 执行到 `add_unscripted_conversations(...)` 时，会把这份 JSON 作为剧本外语音集合参与匹配。
+- 这些额外命中的结果会输出到：
+  - `unscripted_matches.json`
+- 同时也会体现在最终的：
+  - `match_result.csv`
+- 匹配统计中的 `脚本外语音贡献的匹配数`，就是来自这部分数据。
+
+适用场景：
+- EVO 有音频，但 `script_data.json` 中没有对应文本记录。
+- 需要尽量把 Remake 中的额外语音也补配到旧版 EVO 音频。
+- 想把原本 `unmatched` 的一部分台词，进一步通过转录文本召回。
+
+---
+
+## 8. 生成音频匹配校验 HTML
+
+`build_match_result_html.py` 可以把 `match_result.csv` 转成一个本地 HTML 检查页，方便人工校验匹配结果与音频是否对应。
+
+功能概览：
+- 按 `OldVoiceFilename` 优先定位 EVO 音频；
+- 若 `OldVoiceFilename` 为空，则 fallback 到 `RemakeVoiceID -> ch<id>.ogg`；
+- 在 HTML 中写入绝对 `file:///...` 音频地址，避免 `game-file-fc` 为软链接时相对路径失效；
+- 提供筛选、分页、全局播放器，以及音频是否存在的检查结果。
+
+### 基本用法
+
+在项目目录执行：
+
+```powershell
+uv run python build_match_result_html.py
+```
+
+默认行为：
+- 输入 CSV：`match_result.csv`
+- 音频目录：`..\game-file-fc\voice\ogg`
+- 输出 HTML：`match_result_review.html`
+
+生成后，直接用浏览器打开 `match_result_review.html` 即可。
+
+### 参数说明
+
+- `--csv`
+  - 输入的匹配结果 CSV 路径。
+  - 默认值：`match_result.csv`
+
+- `--voice-dir`
+  - EVO `ogg` 音频目录。
+  - 脚本会根据 CSV 中的 `OldVoiceFilename` 或 `RemakeVoiceID` 去这里查找音频文件。
+  - 默认值：`..\game-file-fc\voice\ogg`
+
+- `--html`
+  - 输出 HTML 路径。
+  - 默认值：`match_result_review.html`
+
+### 指定参数示例
+
+```powershell
+uv run python build_match_result_html.py \
+  --csv .\match_result.csv \
+  --voice-dir ..\game-file-fc\voice\ogg \
+  --html .\output\match_result_review.html
+```
+
+### 常用用法
+
+- 重新生成默认检查页：
+
+```powershell
+uv run python build_match_result_html.py
+```
+
+- 指定其他 CSV：
+
+```powershell
+uv run python build_match_result_html.py --csv .\some_other_match_result.csv
+```
+
+- 指定其他音频目录：
+
+```powershell
+uv run python build_match_result_html.py --voice-dir F:\path\to\voice\ogg
+```
+
+- 把 HTML 输出到单独目录：
+
+```powershell
+uv run python build_match_result_html.py --html .\output\review\match_result_review.html
+```
 ### 调用流程图（Mermaid）
+
+#### 整体数据流程图
 
 ```mermaid
 flowchart LR
@@ -206,21 +429,41 @@ flowchart LR
     E1 --> F1[scena_voice_kuro_extractor.py]
     E2 --> F2[ingert_voice_kuro_extractor.py]
 
-    F1 --> G[scena_data_jp/sc_Command.json]
+    F1 --> G[scena_data_jp_Command.json\n必需输入]
     F2 --> G
 
     H[SoraVoiceScripts EVO 文本] --> I[extract_voice_data.py]
-    I --> J[script_data.json]
+    I --> J[script_data.json\n必需输入]
+
+    AA[补丁音频目录分析 + WhisperX large-v2/ja] --> AB[additional_voice_fc.json\n可选输入]
 
     G --> K[main.py]
     J --> K
-    L[scena_data_sc_Command.json] --> K
+    L[scena_data_sc_Command.json\n可选输入] --> K
+    AB --> K
 
     K --> M[matches.json]
     K --> N[anchors.json]
     K --> O[top_k_matches.json]
+    K --> R[unscripted_matches.json\n可选输出]
     K --> P[match_result.csv]
     K --> Q[llm_*.json 缓存]
+```
+
+#### main.py 内部流程图
+
+```mermaid
+flowchart TD
+    A1[读取必需输入\nJP scena + EVO script] --> A2[读取可选输入\n中文翻译 + additional_voice_fc.json]
+    A2 --> B1[检查已有中间产物\n并根据 --from-step 决定起点]
+    B1 --> C1[refresh_matches\n生成或读取 matches.json]
+    C1 --> C2[optimize_with_anchors\n生成或读取 anchors.json]
+    C2 --> C3[solve_gaps\n生成或读取 top_k_matches.json]
+    C3 --> D2[add_unscripted_conversations\n生成或读取 unscripted_matches.json]
+    D2 --> E1[gen_output]
+    A2 --> E1
+    E1 --> E2[输出 match_result.csv]
+    E2 --> E3[输出匹配统计]
 ```
 
 ---
@@ -251,13 +494,7 @@ flowchart LR
   - `script_data.json`
 - 或者修改 `main.py` 中 `RemakeScript(...)` / `Script(...)` 的输入路径，分别建立 SC、3rd 的独立入口脚本（推荐）。
 
-### 3) 迁移时建议调参
-- `ScriptSearcher(threshold=0.3, window_size=3)` 可按文本风格调整：
-  - 台词差异较大时，适当降低 `threshold`；
-  - 长剧情块错位较明显时，适当增大 `window_size`。
-- 首轮建议先保留 `top_k=3`，观察 `top_k_matches.json` 的多候选分布后再收紧。
-
-### 4) 验证步骤
+### 3) 验证步骤
 - 先看 `matches.json`：确认召回是否足够。
 - 再看 `anchors.json`：确认锚点是否覆盖关键剧情段。
 - 最后看 `match_result.csv`：抽查章节开头、分支段、战斗后对白等高风险区。
@@ -408,14 +645,16 @@ Note: using Ingert with `--no-called` preserves call table related information, 
 #### Main script
 - `main.py`
   - Inputs:
-    - `scena_data_jp_Command.json` (1st Japanese)
-    - `script_data.json` (EVO)
-    - `scena_data_sc_Command.json` (1st Simplified Chinese)
+    - Required: `scena_data_jp_Command.json` (1st Japanese)
+    - Required: `script_data.json` (EVO)
+    - Optional: `scena_data_sc_Command.json` (1st Simplified Chinese)
+    - Optional: `additional_voice_fc.json` (out-of-script voice transcripts)
   - Pipeline:
     1. `refresh_matches` -> `matches.json`
     2. `optimize_with_anchors` -> `anchors.json`
     3. `solve_gaps` -> `top_k_matches.json`
-    4. `gen_output` -> `match_result.csv`
+    4. `add_unscripted_conversations` -> `unscripted_matches.json` (optional)
+    5. `gen_output` -> `match_result.csv`
 
 #### Three helper scripts
 - `scena_voice_kuro_extractor.py`
@@ -478,12 +717,74 @@ It is recommended to add fallbacks at:
 4. Generate EVO text data: `uv run python extract_voice_data.py`
 5. Run alignment: `uv run python main.py`
 
+`main.py` currently uses:
+- Required inputs:
+  - `scena_data_jp_Command.json`
+  - `script_data.json`
+- Optional inputs:
+  - `scena_data_sc_Command.json` (Chinese translation)
+  - `additional_voice_fc.json` (out-of-script voice transcripts)
+
+Default behavior:
+- Existing step outputs are skipped automatically.
+- Missing step outputs are generated automatically.
+- If `scena_data_sc_Command.json` is missing, Chinese translation is skipped.
+- If `additional_voice_fc.json` is missing, the additional voice matching step is skipped.
+
+Start from a specific step:
+
+```powershell
+uv run python main.py --from-step top_k
+```
+
+Available step names:
+- `matches`
+- `anchors`
+- `top_k`
+- `additional`
+- `output`
+
+Note:
+- If you request a later step but prerequisite `.json` files are missing, the program automatically falls back to the earliest required previous step.
+
+Common arguments:
+- `--remake-jp`
+  - Remake JP input
+  - Default: `scena_data_jp_Command.json`
+- `--script-data`
+  - EVO script input
+  - Default: `script_data.json`
+- `--translation`
+  - Optional Remake Chinese translation input
+  - Default: `scena_data_sc_Command.json`
+- `--additional-voice`
+  - Optional out-of-script voice transcript input
+  - Default: `additional_voice_fc.json`
+- `--matches-json`
+  - Output for the `matches` step
+  - Default: `matches.json`
+- `--anchors-json`
+  - Output for the `anchors` step
+  - Default: `anchors.json`
+- `--top-k-json`
+  - Output for the `top_k` step
+  - Default: `top_k_matches.json`
+- `--unscripted-matches-json`
+  - Output for the `additional` step
+  - Default: `unscripted_matches.json`
+- `--output-csv`
+  - Final CSV output
+  - Default: `match_result.csv`
+
 Main outputs:
 - `match_result.csv`
 - `matches.json` / `anchors.json` / `top_k_matches.json`
+- `unscripted_matches.json` (when additional voice input is available)
 - `llm_*.json` (LLM cache)
 
-### Pipeline Diagram (Mermaid)
+### Flow Diagrams (Mermaid)
+
+#### Overall Data Flow
 
 ```mermaid
 flowchart LR
@@ -499,28 +800,48 @@ flowchart LR
     E1 --> F1[scena_voice_kuro_extractor.py]
     E2 --> F2[ingert_voice_kuro_extractor.py]
 
-    F1 --> G[scena_data_jp/sc_Command.json]
+    F1 --> G[scena_data_jp_Command.json\nrequired input]
     F2 --> G
 
     H[SoraVoiceScripts EVO text] --> I[extract_voice_data.py]
-    I --> J[script_data.json]
+    I --> J[script_data.json\nrequired input]
+
+    AA[Patch audio scan + WhisperX large-v2/ja] --> AB[additional_voice_fc.json\noptional input]
 
     G --> K[main.py]
     J --> K
-    L[scena_data_sc_Command.json] --> K
+    L[scena_data_sc_Command.json\noptional input] --> K
+    AB --> K
 
     K --> M[matches.json]
     K --> N[anchors.json]
     K --> O[top_k_matches.json]
+    K --> R[unscripted_matches.json\noptional output]
     K --> P[match_result.csv]
     K --> Q[llm_*.json cache]
+```
+
+#### `main.py` Internal Flow
+
+```mermaid
+flowchart TD
+    A1[Load required inputs\nJP scena + EVO script] --> A2[Load optional inputs\nChinese translation + additional_voice_fc.json]
+    A2 --> B1[Check existing intermediate files\nand resolve the effective start step]
+    B1 --> C1[refresh_matches\ncreate or reuse matches.json]
+    C1 --> C2[optimize_with_anchors\ncreate or reuse anchors.json]
+    C2 --> C3[solve_gaps\ncreate or reuse top_k_matches.json]
+    C3 --> D2[add_unscripted_conversations\ncreate or reuse unscripted_matches.json]
+    D2 --> E1[gen_output]
+    A2 --> E1
+    E1 --> E2[Write match_result.csv]
+    E2 --> E3[Print matching statistics]
 ```
 
 ---
 
 ### Migration Notes for SC / 3rd
 
-The pipeline is not 1st-exclusive. For SC / 3rd, replace input data and optionally tune parameters.
+The pipeline is not 1st-exclusive. For SC / 3rd, the key step is replacing the input data.
 
 1) Prepare input data:
 - Remake side (A): generate `scena_data_jp_Command.json` and `scena_data_sc_Command.json` for the target game.
@@ -531,12 +852,7 @@ The pipeline is not 1st-exclusive. For SC / 3rd, replace input data and optional
 - Easiest: rename generated files to what `main.py` expects by default.
 - Better: create separate entry scripts (SC/3rd) and change input paths in `RemakeScript(...)` / `Script(...)`.
 
-3) Parameter tuning:
-- Tune `ScriptSearcher(threshold=0.3, window_size=3)` based on script style.
-- Lower `threshold` for higher variation; increase `window_size` when long blocks drift.
-- Keep `top_k=3` for first pass, then tighten after checking candidate distribution.
-
-4) Validation:
+3) Validation:
 - Check `matches.json` for recall.
 - Check `anchors.json` for anchor coverage.
 - Spot-check `match_result.csv` on chapter starts, branching events, and post-battle dialogues.

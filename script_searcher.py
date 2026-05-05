@@ -50,7 +50,7 @@ class ScriptSearcher:
             self.lsh.insert(window_id, m)
             self.b_windows[window_id] = combined
 
-    def search_from_a(self, script_a, top_k=3):
+    def search_from_a(self, script_a, top_k=3, score_of_fake_match=85):
         """遍历剧本 A，寻找 B 中最匹配的 Top-K"""
         all_results = []
         
@@ -80,7 +80,7 @@ class ScriptSearcher:
                     norm_b = normalize(self.script_b_raw[pos_b:pos_b+self.window_size])
                     if norm_a != norm_b :
                       logger.info(f"发现不匹配的100分: {norm_a} -> {norm_b}")
-                      score = 85
+                      score = score_of_fake_match
                 
                 
                 scored_candidates.append({

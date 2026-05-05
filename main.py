@@ -46,7 +46,16 @@ def add_unscripted_conversations(script_a, unscripted_b, matches):
   if not unmatched_lines_a:
     additional_mapping = {}
   else:
-    hit_in_unscripted = single_line_searcher.search_from_a(list(zip(*unmatched_lines_a))[1], top_k=1)
+    hit_in_unscripted = single_line_searcher.search_from_a(list(zip(*unmatched_lines_a))[1], top_k=1, score_of_fake_match=92)
+    hit_in_unscripted = [r for r in hit_in_unscripted if any(m['score'] >= 92 for m in r['matches'])]
+    for r in hit_in_unscripted:
+      r['matches'] = [m for m in r['matches'] if m['score'] >= 92]
+    for r in hit_in_unscripted:
+      logger.info(f"\n[剧本 A 第 {unmatched_lines_a[r['pos_a']][0]} 行起点]")
+      logger.info(f"  内容: {r['text_a']}")
+      for i, m in enumerate(r['matches']):
+          logger.info(f"  Top-{i+1} 匹配 (附加音频B第 {m['pos_b']} 行, 分数 {m['score']}%):")
+          logger.info(f"    {m['text_b']}")
     additional_mapping = {}
     for match in hit_in_unscripted:
       additional_mapping[unmatched_lines_a[match["pos_a"]][0]] = match["matches"][0]["pos_b"]
@@ -72,13 +81,13 @@ def main():
   with open("matches.json","r", encoding="utf-8") as f:
     matches = json.loads(f.read())
 
-  optimize_with_anchors(script_a, script_b, matches)
+  # optimize_with_anchors(script_a, script_b, matches)
 
   with open("anchors.json", "r", encoding="utf-8") as f:
     final_mapping = json.loads(f.read())
     final_mapping = { int(k):v for k,v in final_mapping.items() }
 
-  solve_gaps(script_a, script_b, matches, final_mapping)
+  # solve_gaps(script_a, script_b, matches, final_mapping)
 
   with open("top_k_matches.json", "r", encoding="utf-8") as f:
     top_k_matches = json.loads(f.read())
@@ -112,6 +121,8 @@ def main():
   logger.info(f"锚点映射数: {len(final_mapping)}")
   logger.info(f"唯一匹配数: {len([m for m,v  in top_k_matches.items() if len(v) == 1])}")
   logger.info(f"多个匹配数: {len([m for m,v  in top_k_matches.items() if len(v) > 1])}")
+  logger.info(f"脚本外语音贡献的匹配数: {len(unscripted_matches)}")
+  logger.info(f"总匹配数（唯一/多个匹配+脚本外语音）: {len(unscripted_matches) + len([m for m,v  in top_k_matches.items() if len(v) >= 1])}")
 
 
 if __name__ == "__main__":

@@ -159,7 +159,7 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript, uns
           uline_b:UnscriptedLine = unscripted_b[best_pos_b]
           row_to_w.append("") # Script ID
           row_to_w.append("ch" + uline_b.voice_id)
-          row_to_w.append("matched") # match type
+          row_to_w.append("voiceonly") # match type
           row_to_w.append("voice") # voice category
           row_to_w.append(trans_text) # RemakeVoiceTranslation
           row_to_w.append(line_a.text) # RemakeVoiceText

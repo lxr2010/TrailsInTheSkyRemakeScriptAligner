@@ -17,9 +17,12 @@
 --- 匹配统计 ---
 - 剧本A总台词数: 47063
 - 包含重复的匹配数: 44970
-- 锚点映射数: 25678
-- 唯一匹配数: 28425
-- 多个匹配数: 280
+- 锚点映射数: 25658
+- 唯一匹配数: 28445
+- 多个匹配数: 235
+- 脚本外语音贡献的匹配数: 378
+- 总匹配数（唯一/多个匹配+脚本外语音）: 29058
+
 
 ## 特点
 
@@ -27,7 +30,7 @@
 - 保留多候选项匹配
 - 匹配项 `rapidfuzz WRatio` 分数超过 92
 - 复杂匹配场景通过大模型预测候选项
-- 处理相同的重置版与 EVO 台词，成功匹配数达到 28425，接近人工校对水平（27537）
+- 处理相同的重置版与 EVO 台词，成功匹配数达到 29058，接近人工校对水平（27537）
 - 精度相比原始版本有明显提高
 - 识别片假名、轨迹系列专有名词、ED6 旧引擎 Gaiji
 - 无 pytorch/GPU 需求
@@ -307,9 +310,11 @@ One full run on Trails in the Sky the 1st produced:
 --- Matching Stats ---
 - Total lines in Script A: 47063
 - Matches with duplicates: 44970
-- Anchor mappings: 25678
-- Unique matches: 28425
-- Multi-candidate matches: 280
+- Anchor mappings: 25658
+- Unique matches: 28445
+- Multi-candidate matches: 235
+- Script-outside-voice contributions: 378
+- Total matches (unique + multi + script-outside-voice): 29058
 
 ### Features
 
@@ -317,7 +322,7 @@ One full run on Trails in the Sky the 1st produced:
 - Preserves multi-candidate matches
 - `rapidfuzz WRatio` score typically above 92 for matched items
 - Uses LLM to handle hard/ambiguous matching cases
-- On Remake vs EVO alignment, achieved 28425 matched lines (close to manual proofreading result: 27537)
+- On Remake vs EVO alignment, achieved 29058 matched lines (close to manual proofreading result: 27537)
 - Significantly improved precision over the original version
 - Handles katakana, Trails-specific terms, and ED6 gaiji text patterns
 - No PyTorch/GPU dependency

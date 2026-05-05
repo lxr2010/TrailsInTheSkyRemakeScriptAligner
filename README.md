@@ -66,12 +66,12 @@ copy .env.example .env
 
 ```env
 OPENAI_API_KEY=sk-xxxxx
-OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_BASE_URL=https://api.deepseek.com
 ```
 
 说明：
 - `OPENAI_BASE_URL` 只要兼容 OpenAI API 即可（官方/第三方网关均可）。
-- 代码中默认模型名写在 `llm.py`（当前为 `gpt-4o-mini`），如需替换请在该文件中调整。
+- 代码中默认模型名写在 `llm.py`（当前为 `deepseek-v4-flash`），如需替换请在该文件中调整。
 
 ---
 
@@ -595,12 +595,12 @@ Required fields:
 
 ```env
 OPENAI_API_KEY=sk-xxxxx
-OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_BASE_URL=https://api.deepseek.com
 ```
 
 Notes:
 - Any OpenAI-compatible endpoint works for `OPENAI_BASE_URL`.
-- Default model names are configured in `llm.py` (currently `gpt-4o-mini`).
+- Default model names are configured in `llm.py` (currently `deepseek-v4-flash`).
 
 ---
 

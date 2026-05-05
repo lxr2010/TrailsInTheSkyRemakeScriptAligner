@@ -117,9 +117,10 @@ B[0]: 何をしている！早く行け！！
         logger.error(f"LLM Alignment Error: {e}")
         return None
 
-def match_script_segment(source_segment, candidates):
+def match_script_segment(source_segment: list[str], window_size: int, candidates):
     """
-    source_segment: list of 5 strings [prev_prev, prev, target, next, next_next]
+    source_segment: list of strings
+    window_size: int, should be 5 
     candidates: list of dicts [{'id': 123, 'lines': [5 lines]}, ...]
     """
     
@@ -154,9 +155,9 @@ def match_script_segment(source_segment, candidates):
     # 格式化输入数据
     user_content = {
         "source": {
-            "context_before": source_segment[:2],
-            "target": source_segment[2],
-            "context_after": source_segment[3:]
+            "context_before": source_segment[:window_size//2],
+            "target": source_segment[window_size//2],
+            "context_after": source_segment[window_size//2+1:]
         },
         "candidates": [
             {"id": c['id'], "lines": c['lines']} for c in candidates

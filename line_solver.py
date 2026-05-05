@@ -42,6 +42,9 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
 
   def get_norm_text_a(pos_a, window_size=3):
     return " / ".join(map(normalize, script_a[pos_a-(window_size//2):pos_a+(window_size//2)+1]))
+
+  def get_text_list_a(pos_a, window_size=3):
+    return script_a[pos_a-(window_size//2):pos_a+(window_size//2)+1]
     
       
   single_matches = { k:v for k,v in anchors.items()}
@@ -99,7 +102,7 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
               text_c = get_text_b(c,5)
               logger.info(f"  候选位置 {c} 相似度 {score_map[c]} : {text_c} -> {norm_text_c}")
             if p not in llm_cache:
-              llm_match = match_script_segment(get_text_a(p,5), [{"id": c, "lines": [get_text_b(c,5)]} for c in sorted(candidates)])
+              llm_match = match_script_segment(get_text_list_a(p,5), 5, [{"id": c, "lines": [get_text_b(c,5)]} for c in sorted(candidates)])
               llm_cache[p] = llm_match
             else :
               llm_match: dict = llm_cache[p]

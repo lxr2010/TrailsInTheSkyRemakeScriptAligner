@@ -5,6 +5,7 @@ import csv
 import html
 import json
 from pathlib import Path
+import re
 
 
 def normalize_voice_stem(value: str) -> str:
@@ -18,6 +19,35 @@ def normalize_voice_stem(value: str) -> str:
     return text
 
 
+def build_audio_path_from_stem(voice_stem: str, voice_dir: Path) -> Path | None:
+    stem = normalize_voice_stem(voice_stem)
+    if not stem:
+        return None
+    if not stem.lower().startswith("ch"):
+        stem = f"ch{stem}"
+    return voice_dir / f"{stem}.ogg"
+
+
+def extract_annotation_voice_stems(annotation: str) -> list[str]:
+    text = annotation.strip()
+    if not text or "LLM推测ScriptId(VoiceId):" not in text:
+        return []
+
+    candidate_part = text.split("LLM推测ScriptId(VoiceId):", 1)[1].split(";", 1)[0]
+    stems: list[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(r"\(([^()]+)\)", candidate_part):
+        stem = normalize_voice_stem(match.group(1))
+        if not stem:
+            continue
+        if stem.lower().startswith("ch"):
+            stem = stem[2:]
+        if stem not in seen:
+            seen.add(stem)
+            stems.append(stem)
+    return stems
+
+
 def path_to_file_uri(path: Path) -> str:
     resolved = path.resolve(strict=False)
     return resolved.as_uri()
@@ -26,13 +56,30 @@ def path_to_file_uri(path: Path) -> str:
 def build_audio_path(row: dict[str, str], voice_dir: Path) -> Path | None:
     old_voice_filename = normalize_voice_stem(row.get("OldVoiceFilename", ""))
     if old_voice_filename:
-        return voice_dir / f"{old_voice_filename}.ogg"
+        return build_audio_path_from_stem(old_voice_filename, voice_dir)
 
     remake_voice_id = row.get("RemakeVoiceID", "").strip()
     if remake_voice_id:
-        return voice_dir / f"ch{remake_voice_id}.ogg"
+        return build_audio_path_from_stem(remake_voice_id, voice_dir)
 
     return None
+
+
+def build_annotation_audio_entries(annotation: str, voice_dir: Path) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    for stem in extract_annotation_voice_stems(annotation):
+        audio_path = build_audio_path_from_stem(stem, voice_dir)
+        if audio_path is None:
+            continue
+        entries.append(
+            {
+                "voice_id": stem,
+                "audio_path": str(audio_path.resolve(strict=False)),
+                "audio_uri": path_to_file_uri(audio_path),
+                "audio_exists": "yes" if audio_path.exists() else "no",
+            }
+        )
+    return entries
 
 
 def load_rows(csv_path: Path, voice_dir: Path) -> list[dict[str, str]]:
@@ -44,7 +91,10 @@ def load_rows(csv_path: Path, voice_dir: Path) -> list[dict[str, str]]:
 
         for index, row in enumerate(reader, start=1):
             audio_path = build_audio_path(row, voice_dir)
+            annotation = row.get("Annotation", "").strip()
+            annotation_audio_entries = build_annotation_audio_entries(annotation, voice_dir)
             audio_exists = audio_path is not None and audio_path.exists()
+            has_any_playable_audio = audio_exists or any(entry["audio_exists"] == "yes" for entry in annotation_audio_entries)
             rows.append(
                 {
                     "index": str(index),
@@ -61,10 +111,12 @@ def load_rows(csv_path: Path, voice_dir: Path) -> list[dict[str, str]]:
                     "translation": row.get("RemakeVoiceTranslation", "").strip(),
                     "remake_text": row.get("RemakeVoiceText", "").strip(),
                     "old_voice_text": row.get("OldVoiceText", "").strip(),
-                    "annotation": row.get("Annotation", "").strip(),
+                    "annotation": annotation,
                     "audio_path": str(audio_path.resolve(strict=False)) if audio_path else "",
                     "audio_uri": path_to_file_uri(audio_path) if audio_path else "",
-                    "audio_exists": "yes" if audio_exists else "no",
+                    "audio_exists": "yes" if has_any_playable_audio else "no",
+                    "primary_audio_exists": "yes" if audio_exists else "no",
+                    "annotation_audio_entries": json.dumps(annotation_audio_entries, ensure_ascii=False),
                 }
             )
     return rows
@@ -97,6 +149,8 @@ def build_html(rows: list[dict[str, str]], html_path: Path, csv_path: Path, voic
             row["audio_path"],
             row["audio_uri"],
             row["audio_exists"],
+            row["primary_audio_exists"],
+            row["annotation_audio_entries"],
         ]
         for row in rows
     ]
@@ -141,6 +195,7 @@ def build_html(rows: list[dict[str, str]], html_path: Path, csv_path: Path, voic
     .speech {{ white-space: pre-wrap; min-width: 240px; }}
     .path {{ min-width: 320px; word-break: break-all; color: var(--muted); }}
     .play-cell {{ min-width: 280px; }}
+    .play-group {{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }}
     audio {{ width: 240px; max-width: 100%; }}
     .muted {{ color: var(--muted); }}
     .missing {{ color: var(--warn); background: var(--warn-bg); border: 1px solid #fed7aa; border-radius: 6px; padding: 2px 8px; display: inline-block; }}
@@ -239,6 +294,8 @@ def build_html(rows: list[dict[str, str]], html_path: Path, csv_path: Path, voic
       audioPath: 14,
       audioUri: 15,
       audioExists: 16,
+      primaryAudioExists: 17,
+      annotationAudioEntries: 18,
     }});
     const allRows = {rows_json};
     const filterInput = document.getElementById('filter');
@@ -295,14 +352,41 @@ def build_html(rows: list[dict[str, str]], html_path: Path, csv_path: Path, voic
       return Number.parseInt(pageSizeSelect.value, 10) || 200;
     }}
 
+    function renderPlayButton(uri, label, text = '播放') {{
+      const escapedText = escapeHtml(text);
+      return `<button type="button" class="play-btn" data-uri="${{escapeHtml(uri)}}" data-label="${{escapeHtml(label)}}" data-default-text="${{escapedText}}">${{escapedText}}</button>`;
+    }}
+
+    function parseAnnotationAudioEntries(row) {{
+      try {{
+        const value = row[COL.annotationAudioEntries];
+        return Array.isArray(value) ? value : JSON.parse(value || '[]');
+      }} catch (_error) {{
+        return [];
+      }}
+    }}
+
     function renderPlayCell(row) {{
-      if (row[COL.audioExists] !== 'yes') {{
+      const parts = [];
+      if (row[COL.primaryAudioExists] === 'yes' && row[COL.audioUri]) {{
+        const label = `${{row[COL.remakeVoiceId] || '-'}} / ${{row[COL.oldVoiceFilename] || '-'}}`;
+        parts.push(renderPlayButton(row[COL.audioUri], label, '播放主音频'));
+      }}
+
+      const annotationEntries = parseAnnotationAudioEntries(row);
+      for (const entry of annotationEntries) {{
+        if (entry.audio_exists !== 'yes') {{
+          continue;
+        }}
+        parts.push(renderPlayButton(entry.audio_uri, `LLM预测 VoiceID: ${{entry.voice_id}}`, `播放 LLM ${{entry.voice_id}}`));
+      }}
+
+      if (parts.length === 0) {{
         const title = escapeHtml(row[COL.audioPath]);
         return `<span class="missing" title="${{title}}">音频不存在</span>`;
       }}
-      const uri = escapeHtml(row[COL.audioUri]);
-      const label = escapeHtml(`${{row[COL.remakeVoiceId] || '-'}} / ${{row[COL.oldVoiceFilename] || '-'}}`);
-      return `<button type="button" class="play-btn" data-uri="${{uri}}" data-label="${{label}}">播放</button>`;
+
+      return `<div class="play-group">${{parts.join('')}}</div>`;
     }}
 
     function renderRow(row) {{
@@ -366,7 +450,7 @@ def build_html(rows: list[dict[str, str]], html_path: Path, csv_path: Path, voic
         return;
       }}
       if (currentPlayButton && currentPlayButton !== button) {{
-        currentPlayButton.textContent = '播放';
+        currentPlayButton.textContent = currentPlayButton.dataset.defaultText || '播放';
       }}
       currentPlayButton = button;
       button.textContent = '播放中';
@@ -378,19 +462,19 @@ def build_html(rows: list[dict[str, str]], html_path: Path, csv_path: Path, voic
       }}
 
       globalAudio.play().catch(() => {{
-        button.textContent = '播放';
+        button.textContent = button.dataset.defaultText || '播放';
       }});
     }});
 
     globalAudio.addEventListener('ended', () => {{
       if (currentPlayButton) {{
-        currentPlayButton.textContent = '播放';
+        currentPlayButton.textContent = currentPlayButton.dataset.defaultText || '播放';
       }}
     }});
 
     globalAudio.addEventListener('pause', () => {{
       if (!globalAudio.ended && currentPlayButton) {{
-        currentPlayButton.textContent = '播放';
+        currentPlayButton.textContent = currentPlayButton.dataset.defaultText || '播放';
       }}
     }});
 

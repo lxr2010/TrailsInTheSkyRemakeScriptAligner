@@ -132,10 +132,12 @@ class RemakeConversation(BaseModel):
 
 class UnscriptedConversation:
     lines: list[UnscriptedLine]
-    def __init__(self,file:str) -> None:
-        with open(file, "r", encoding="utf-8") as f:
-            adapter = TypeAdapter(list[UnscriptedLine])
-            self.lines = adapter.validate_json(f.read())
+    def __init__(self, file: str | None = None) -> None:
+        self.lines = []
+        if file:
+            with open(file, "r", encoding="utf-8") as f:
+                adapter = TypeAdapter(list[UnscriptedLine])
+                self.lines = adapter.validate_json(f.read())
         self.texts = [line.text for line in self.lines]
     def __len__(self) -> int:
         return len(self.lines)
@@ -188,7 +190,7 @@ def test_lines():
             print(line)
 
 def test_unscriptedline():
-    with open("whisperx_fc_missing_simple.json", "r", encoding="utf-8") as f:
+    with open("additional_voice_fc.json", "r", encoding="utf-8") as f:
         adapter = TypeAdapter(list[UnscriptedLine])
         lines = adapter.validate_json(f.read())
         for line in lines:

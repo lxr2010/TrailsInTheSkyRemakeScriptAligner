@@ -109,10 +109,10 @@ def explain_llm_alignments(script_a: RemakeScript, script_b: Script):
   except FileNotFoundError:
     logger.error("At least one of LLM cache file not found.")
 
-def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript, unscripted_b: UnscriptedConversation, final_matches:dict[int,list], additional_matches:dict[int,int], llm_explanations:dict, match_result_csv:str):
+def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript | None, unscripted_b: UnscriptedConversation | None, final_matches:dict[int,list], additional_matches:dict[int,int], llm_explanations:dict, match_result_csv:str):
   # gpt-4o-mini等大模型做不到精准匹配中日翻译，所以无法实现自动匹配中日翻译条目。
   # trans_a_aligned = solve_alignment(script_a, trans_a)
-  trans_map = { t.id : t for t in trans_a}
+  trans_map = { t.id : t for t in trans_a } if trans_a is not None else {}
   with open(match_result_csv, 'w', encoding='utf-8', newline='\n') as f:
     writer = csv.writer(f)
     writer.writerow(['RemakeVoiceID', 'RemakeScenaScriptFilename', 'RemakeScenaScriptLineno', 'RemakeScenaScriptAddStructLineno', 'RemakeScenaScriptTranslationLineno', 'RemakeScenaScriptTranslationAddStructLineno', 'OldScriptId', 'OldVoiceFilename', 'MatchType', 'RemakeVoiceCategory','RemakeVoiceTranslation', 'RemakeVoiceText', 'OldVoiceText',"Annotation"])
@@ -154,7 +154,7 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript, uns
           anno += ";LLM得分: " + str(llm_explanations[pos_a]['score'])
         row_to_w.append(anno)
       else:
-        if pos_a in additional_matches:
+        if unscripted_b is not None and pos_a in additional_matches:
           best_pos_b = additional_matches[pos_a]
           uline_b:UnscriptedLine = unscripted_b[best_pos_b]
           row_to_w.append("") # Script ID

@@ -198,6 +198,8 @@ def process_with_anchors(script_a, script_b, matches, llm_cache=None):
                     # 调用 LLM 获取局部对齐结果
                     # 返回格式建议为 {relative_idx_a: relative_idx_b}
                     local_alignment = call_llm_for_local_alignment(sub_a, sub_b)
+                    if local_alignment is None:
+                        local_alignment = []
                     # alignment: list[dict] = [{"a": [0], "b": [0], "score": 1.0, "reason": "文本一致"}, {"a": [1], "b": [1, 2], "score": 1.0, "reason": "台词拆分"}]
                     # 合并多个指向B剧本同一行的结果
                     b_to_a_map = {}

@@ -102,9 +102,9 @@ def explain_llm_alignments(script_a: RemakeScript, script_b: Script):
       # match_segment: {"selected_id": int, "confidence":int, "reason": str}
       explanations[key] = {"b": [match_segment['selected_id']], "reason": match_segment['reason'], "score": match_segment['confidence']/100.0}
 
-      with open("llm_explanations.json", "w", encoding="utf-8") as f:
-        json.dump(explanations, f, indent=2, ensure_ascii=False)
-      return explanations
+    with open("llm_explanations.json", "w", encoding="utf-8") as f:
+      json.dump(explanations, f, indent=2, ensure_ascii=False)
+    return explanations
 
   except FileNotFoundError:
     logger.error("At least one of LLM cache file not found.")

@@ -31,6 +31,9 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
 
   llm_cache = load_cached_llm_segment()
 
+  # 注：这些窗口切片在 pos_a/pos_b ∈ {0,1} 时会因 Python 负索引取到末尾行。
+  # 但实际触发概率极低：开头几行必然被锚点锁定，走不到需要取上下文的模糊匹配分支。
+  # 详见 https://github.com/lxr2010/TrailsInTheSkyRemakeScriptAligner 相关讨论。
   def get_norm_text_b(pos_b, window_size=3):
     return " / ".join(map(normalize, script_b[pos_b-(window_size//2):pos_b+(window_size//2)+1]))
 

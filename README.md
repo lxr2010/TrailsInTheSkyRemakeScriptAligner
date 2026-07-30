@@ -465,18 +465,18 @@ flowchart TD
 | 指标 | 数值 |
 |---|---|
 | Remake 总台词数 | 47,063 |
-| 包含重复的匹配数 | 44,970 |
-| 锚点映射数 | 25,658 |
-| 唯一匹配数 | 28,445 |
-| 多个匹配数 | 235 |
-| 脚本外语音贡献 | 378 |
-| **总匹配数** | **29,058** |
+| 包含重复的匹配数 | 45,043 |
+| 锚点映射数 | 25,661 |
+| 唯一匹配数 | 28,505 |
+| 多个匹配数 | 352 |
+| 脚本外语音贡献 | 323 |
+| **总匹配数** | **29,180** |
 
 作为对比，人工校对结果为 27,537 条。
 
 > ### Historical Matching Stats
 >
-> One full run achieved **29,058** matched lines, compared to 27,537 from manual proofreading. See the table above for the breakdown.
+> One full run achieved **29,180** matched lines, compared to 27,537 from manual proofreading. See the table above for the breakdown.
 
 ---
 

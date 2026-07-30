@@ -5,13 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "dataclasses>=0.8",
     "datasketch>=1.8.0",
-    "dotenv>=0.9.9",
     "jaconv>=0.4.1",
+    "matplotlib>=3.10.0",
     "openai>=2.14.0",
     "pandas>=2.3.3",
     "pydantic>=2.12.5",
+    "python-dotenv>=1.2.0",
     "rapidfuzz>=3.14.3",
     "seaborn>=0.13.2",
 ]

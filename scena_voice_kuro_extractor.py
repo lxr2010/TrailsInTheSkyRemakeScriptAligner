@@ -2,6 +2,7 @@ import os
 import ast
 import json
 import re
+import argparse
 
 def parse_node_value(node):
     """Recursively parse AST nodes to get their Python values."""
@@ -205,9 +206,55 @@ def parse_script(file_path):
         raise e
         return []
 
+def process_directory(directory, lang, output_dir):
+    """Parse all .py files in a directory and write scena_data_{lang}*.json."""
+    if not os.path.isdir(directory):
+        print(f"Warning: Directory not found, skipping: {directory}")
+        return 0
+
+    print(f"Scanning directory: {directory}...")
+    lang_results = []
+    for filename in sorted(os.listdir(directory)):
+        if filename.endswith('.py'):
+            file_path = os.path.join(directory, filename)
+            results = parse_script(file_path)
+            if results:
+                lang_results.extend(results)
+
+    lang_results.sort(key=lambda x: (x['file'], x['line']))
+
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, f'scena_data_{lang}.json')
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(lang_results, f, indent=4, ensure_ascii=False)
+
+    for typ in ["Command", "add_struct"]:
+        output_file_typ = os.path.join(output_dir, f'scena_data_{lang}_{typ}.json')
+        lang_results_typ = [r for r in lang_results if r['type'] == typ]
+        with open(output_file_typ, 'w', encoding='utf-8') as f:
+            json.dump(lang_results_typ, f, indent=4, ensure_ascii=False)
+
+    print(f"Found {len(lang_results)} entries for '{lang}'. Results saved to {output_file}")
+    return len(lang_results)
+
+
 def main():
     """Main function to find scripts, parse them, and save the results."""
     base_dir = os.path.dirname(os.path.abspath(__file__))
+    parser = argparse.ArgumentParser(description="Extract Cmd_text_00/06 from KuroTools-decompiled .py scena files.")
+    parser.add_argument("--input-dir", help="Directory containing decompiled .py scena files (single language)")
+    parser.add_argument("--language", choices=["jp", "sc"], help="Language tag for output naming (required with --input-dir)")
+    parser.add_argument("--output-dir", default=base_dir, help="Output directory for scena_data_*.json")
+    args = parser.parse_args()
+
+    if args.input_dir:
+        if not args.language:
+            raise SystemExit("--language is required when --input-dir is provided")
+        total_entries = process_directory(args.input_dir, args.language, args.output_dir)
+        print(f"\nExtraction complete. Found a total of {total_entries} entries.")
+        return
+
+    # 默认行为：扫描脚本目录下的 scena/jp 和 scena/sc
     scena_dirs = {
         'jp': os.path.join(base_dir, 'scena', 'jp'),
         'sc': os.path.join(base_dir, 'scena', 'sc')
@@ -215,34 +262,7 @@ def main():
 
     total_entries = 0
     for lang, directory in scena_dirs.items():
-        if not os.path.isdir(directory):
-            print(f"Warning: Directory not found, skipping: {directory}")
-            continue
-        
-        print(f"Scanning directory: {directory}...")
-        lang_results = []
-        for filename in os.listdir(directory):
-            if filename.endswith('.py'):
-                file_path = os.path.join(directory, filename)
-                results = parse_script(file_path)
-                if results:
-                    lang_results.extend(results)
-
-        # Sort results for consistency
-        lang_results.sort(key=lambda x: (x['file'], x['line']))
-
-        output_file = os.path.join(base_dir, f'scena_data_{lang}.json')
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(lang_results, f, indent=4, ensure_ascii=False)
-
-        for typ in ["Command", "add_struct"]:
-            output_file_typ = os.path.join(base_dir, f'scena_data_{lang}_{typ}.json')
-            lang_results_typ = [r for r in lang_results if r['type'] == typ]
-            with open(output_file_typ, 'w', encoding='utf-8') as f:
-                json.dump(lang_results_typ, f, indent=4, ensure_ascii=False)
-        
-        total_entries += len(lang_results)
-        print(f"Found {len(lang_results)} entries for '{lang}'. Results saved to {output_file}")
+        total_entries += process_directory(directory, lang, base_dir)
 
     print(f"\nExtraction complete. Found a total of {total_entries} entries.")
 

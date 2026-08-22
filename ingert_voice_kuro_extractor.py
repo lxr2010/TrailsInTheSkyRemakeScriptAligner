@@ -440,7 +440,7 @@ def write_outputs(entries: List[Dict], output_file: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Extract Cmd_text_00/06 equivalent entries from Ingert .ing files")
     parser.add_argument("input", nargs="?", default=os.path.join(os.path.dirname(os.path.dirname(__file__)), "disasm"), help="Input .ing file or directory")
-    parser.add_argument("--output", default=os.path.join(os.path.dirname(__file__), "ingert_data.json"), help="Output json file")
+    parser.add_argument("--output", default=os.path.join(os.path.dirname(__file__), "scena_data.json"), help="Output json file")
     parser.add_argument("--jp-input", help="JP Ingert input file or directory")
     parser.add_argument("--sc-input", help="SC Ingert input file or directory")
     parser.add_argument("--output-dir", default=os.path.dirname(__file__), help="Output directory for jp/sc batch mode")
@@ -455,8 +455,8 @@ def main() -> None:
         jp_entries = extract_from_input(args.jp_input)
         sc_entries = extract_from_input(args.sc_input)
 
-        write_outputs(jp_entries, os.path.join(args.output_dir, "ingert_data_jp.json"))
-        write_outputs(sc_entries, os.path.join(args.output_dir, "ingert_data_sc.json"))
+        write_outputs(jp_entries, os.path.join(args.output_dir, "scena_data_jp.json"))
+        write_outputs(sc_entries, os.path.join(args.output_dir, "scena_data_sc.json"))
         print(f"Extraction complete. Found a total of {len(jp_entries) + len(sc_entries)} entries.")
         return
 

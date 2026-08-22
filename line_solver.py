@@ -104,7 +104,7 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
   # ── Phase 2: 并发调用 LLM ──
   if pending_llm:
     logger.info(f"共 {len(pending_llm)} 个歧义位置需要 LLM 判断，并发调用中...")
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=32) as executor:
       futures = {}
       for p, cands in pending_llm.items():
         future = executor.submit(

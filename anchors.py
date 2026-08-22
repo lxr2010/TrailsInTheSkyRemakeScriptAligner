@@ -223,7 +223,7 @@ def process_with_anchors(script_a, script_b, matches, llm_cache=None):
         raw_results = {}
         if pending:
             logger.info(f"并发处理 {len(pending)} 个模糊区间...")
-            with ThreadPoolExecutor(max_workers=8) as executor:
+            with ThreadPoolExecutor(max_workers=32) as executor:
                 futures = {executor.submit(call_llm_for_local_alignment, sa, sb): k for k, sa, sb in pending}
                 for f in as_completed(futures):
                     k = futures[f]

@@ -1,5 +1,6 @@
 import logging
 import difflib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from synonyms import normalize
 from rapidfuzz import fuzz
 from llm import call_llm_for_local_alignment
@@ -171,20 +172,75 @@ def process_with_anchors(script_a, script_b, matches, llm_cache=None):
 
     def update_matches_llm(anchors, llm_cache: dict[str]):
         final_mapping, gaps = compute_gaps(anchors)
+
+        # 重建逻辑：把原始 LLM 输出合并为以 b 行为主键的对齐项
+        def rebuild(local_alignment):
+            if local_alignment is None:
+                return []
+            b_to_a_map = {}
+            b_to_score = {}
+            b_to_reason = {}
+            none_alignments = []
+            for item in local_alignment:
+                if item['a'] is None or item['b'] is None:
+                    none_alignments.append(item)
+                    continue
+                for b_idx in item['b']:
+                    if b_idx is not None:
+                        b_to_a_map.setdefault(b_idx, [])
+                        b_to_score.setdefault(b_idx, 1.0)
+                        b_to_reason.setdefault(b_idx, '')
+                        for a_idx in item['a']:
+                            if a_idx is not None:
+                                b_to_a_map[b_idx].append(a_idx)
+                            b_to_score[b_idx] = min(item.get('score', 1.0), b_to_score[b_idx])
+                            b_to_reason[b_idx] += item.get('reason', '')
+            rebuilt = []
+            for b_idx, a_indices in b_to_a_map.items():
+                rebuilt.append({
+                    "a": a_indices,
+                    "b": [b_idx],
+                    "score": b_to_score.get(b_idx, 1.0),
+                    "reason": b_to_reason.get(b_idx, '')
+                })
+            rebuilt.extend(none_alignments)
+            return rebuilt
+
+        # ── Phase 1: 收集所有需要 LLM 的模糊区间（互不依赖，可并发）──
+        pending = []  # (gap_key, sub_a, sub_b)
+        for gap in gaps:
+            curr_a, curr_b, next_a, next_b = gap
+            gap_a = next_a - curr_a
+            gap_b = next_b - curr_b
+            if gap_a > 1 and gap_b > 1 and (gap_a + gap_b) < 42:
+                gap_key = f"{curr_a}:{next_a}-{curr_b}:{next_b}"
+                if gap_key not in llm_cache:
+                    sub_a = script_a[curr_a + 1 : next_a]
+                    sub_b = script_b[curr_b + 1 : next_b]
+                    pending.append((gap_key, sub_a, sub_b))
+
+        # ── Phase 2: 并发调用 LLM（原始结果暂存）──
+        raw_results = {}
+        if pending:
+            logger.info(f"并发处理 {len(pending)} 个模糊区间...")
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                futures = {executor.submit(call_llm_for_local_alignment, sa, sb): k for k, sa, sb in pending}
+                for f in as_completed(futures):
+                    k = futures[f]
+                    raw_results[k] = f.result()
+
+        # ── Phase 3: 串行重建 + 处理（与旧逻辑一致，但 LLM 已缓存）──
         for gap in gaps:
             curr_a, curr_b, next_a, next_b = gap
             gap_a = next_a - curr_a
             gap_b = next_b - curr_b
             diff = abs(gap_a - gap_b)
-            
+
             # 情况 2：小范围的近似线性区间，交给LLM
             if gap_a > 1 and gap_b > 1 and (gap_a + gap_b) < 42:
-                # 这里的 B 可能比 A 多，也可能比 A 少
-                # 提取这一小段内容交给 LLM
                 sub_a = script_a[curr_a + 1 : next_a]
                 sub_b = script_b[curr_b + 1 : next_b]
 
-              
                 logger.info(f"发现模糊区间: A[{curr_a+1}:{next_a}] -> B[{curr_b+1}:{next_b}]，调用 LLM...")
                 for i, line in enumerate(sub_a):
                     logger.info(f"  A[{i}]: {line}")
@@ -192,48 +248,15 @@ def process_with_anchors(script_a, script_b, matches, llm_cache=None):
                     logger.info(f"  B[{i}]: {line}")
 
                 gap_key = f"{curr_a}:{next_a}-{curr_b}:{next_b}"
-                local_alignment: list[dict] | None = llm_cache.get(gap_key, None)
 
-                if local_alignment is None:        
-                    # 调用 LLM 获取局部对齐结果
-                    # 返回格式建议为 {relative_idx_a: relative_idx_b}
-                    local_alignment = call_llm_for_local_alignment(sub_a, sub_b)
+                if gap_key in raw_results:
+                    # 新结果：重建后存入缓存
+                    local_alignment = rebuild(raw_results[gap_key])
+                    llm_cache[gap_key] = local_alignment
+                else:
+                    local_alignment = llm_cache.get(gap_key, None)
                     if local_alignment is None:
                         local_alignment = []
-                    # alignment: list[dict] = [{"a": [0], "b": [0], "score": 1.0, "reason": "文本一致"}, {"a": [1], "b": [1, 2], "score": 1.0, "reason": "台词拆分"}]
-                    # 合并多个指向B剧本同一行的结果
-                    b_to_a_map = {}
-                    b_to_score = {}
-                    b_to_reason = {}
-                    none_alignments = []
-                    for item in local_alignment:
-                        if item['a'] is None or item['b'] is None:
-                            none_alignments.append(item)
-                            continue
-                        for b_idx in item['b']:
-                            if b_idx is not None:
-                                b_to_a_map.setdefault(b_idx, [])
-                                b_to_score.setdefault(b_idx, 1.0)
-                                b_to_reason.setdefault(b_idx, '')
-                                for a_idx in item['a']:
-                                    if a_idx is not None:
-                                        b_to_a_map[b_idx].append(a_idx)
-                                    b_to_score[b_idx] = min(item.get('score', 1.0), b_to_score[b_idx])
-                                    b_to_reason[b_idx] += item.get('reason', '')
-                    
-                    # 重新构造 local_alignment
-                    local_alignment = []
-                    for b_idx, a_indices in b_to_a_map.items():
-                        local_alignment.append({
-                            "a": a_indices, 
-                            "b": [b_idx],
-                            "score": b_to_score.get(b_idx, 1.0),
-                            "reason": b_to_reason.get(b_idx, '')
-                        })
-                    local_alignment.extend(none_alignments)
-
-                    if gap_key not in llm_cache:
-                        llm_cache[gap_key] = local_alignment
 
                 # Only keep the one-one match
                 local_map = {}
@@ -246,7 +269,7 @@ def process_with_anchors(script_a, script_b, matches, llm_cache=None):
                         local_map[item['a'][0]] = item['b'][0]
                     else:
                         logger.info(f"  A[{','.join(map(str, item['a']))}] -> B[{','.join(map(str, item['b']))}] (略过)")
-                
+
                 # 将相对坐标转换为绝对坐标存入 final_mapping
                 for rel_a, rel_b in local_map.items():
                     if rel_b is not None and rel_a is not None:

@@ -38,6 +38,7 @@ param(
     [string]$OutputDir = ".",
     [switch]$SkipDownload,
     [switch]$Fresh,
+    [int]$NewIdStart = 100000,
     [string]$Uv = "uv"
 )
 
@@ -112,7 +113,8 @@ $mainArgs = @(
     "--anchors-json", $anchorsJson,
     "--top-k-json", $topKJson,
     "--unscripted-matches-json", $unscriptedJson,
-    "--output-csv", $outputCsv
+    "--output-csv", $outputCsv,
+    "--new-id-start", $NewIdStart
 )
 if ($Translation) {
     $mainArgs += @("--translation", $Translation)

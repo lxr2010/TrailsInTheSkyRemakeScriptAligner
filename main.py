@@ -138,12 +138,13 @@ def build_parser() -> argparse.ArgumentParser:
   parser.add_argument("--top-k-json", default="top_k_matches.json")
   parser.add_argument("--unscripted-matches-json", default="unscripted_matches.json")
   parser.add_argument("--output-csv", default="match_result.csv")
+  parser.add_argument("--new-id-start", type=int, default=50001, help="无真实语音 ID 时的合成 ID 起始值（SC 建议 100000）")
   return parser
 
 def main():
   args = build_parser().parse_args()
 
-  script_a = RemakeScript(args.remake_jp)
+  script_a = RemakeScript(args.remake_jp, args.new_id_start)
   if len(script_a) == 0:
     raise SystemExit(f"未能读取 Remake 日文数据: {args.remake_jp}")
 
@@ -152,7 +153,7 @@ def main():
   translation_path = Path(args.translation)
   trans_a = None
   if translation_path.exists():
-    trans_a = RemakeScript(str(translation_path))
+    trans_a = RemakeScript(str(translation_path), args.new_id_start)
   else:
     logger.info(f"未找到中文翻译文件，已跳过: {translation_path}")
 

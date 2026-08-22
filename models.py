@@ -162,7 +162,8 @@ class Script :
 class RemakeScript :
   NEW_ID_START=50001
   lines: list[RemakeLine]
-  def __init__(self, file:str) -> None:
+  def __init__(self, file:str, new_id_start:int = 50001) -> None:
+    self.NEW_ID_START = new_id_start
     self.lines = []
     try:
       with open(file, "r", encoding="utf-8") as f:

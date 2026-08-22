@@ -55,6 +55,9 @@ $ErrorActionPreference = "Stop"
 $PacFile = (Resolve-Path $PacFile).Path
 $ExtractPacScript = (Resolve-Path $ExtractPacScript).Path
 $Dat2PyScript = (Resolve-Path $Dat2PyScript).Path
+if (-not (Test-Path $OutputDir)) {
+    New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+}
 $OutputDir = (Resolve-Path $OutputDir).Path
 
 if (-not $ExtractorScript) {

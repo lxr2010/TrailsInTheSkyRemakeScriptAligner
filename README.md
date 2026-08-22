@@ -58,47 +58,68 @@
 
 ## 快速开始
 
-如果你手上已经有解包好的数据，最快 5 步跑通：
+项目提供两个 PowerShell 脚本，把“解包 PAC”和“跑匹配”各自压缩成一条命令。**所有路径均通过参数传入，无硬编码。**
 
-```bash
-# 1. 克隆项目并安装依赖
-git clone https://github.com/lxr2010/TrailsInTheSkyRemakeScriptAligner.git
-cd TrailsInTheSkyRemakeScriptAligner
-uv sync
+### 准备工具（一次性）
 
-# 2. 配置 LLM API
-copy .env.example .env
-# 编辑 .env，填入 OPENAI_API_KEY 和 OPENAI_BASE_URL
+一键脚本需要两个外部反编译工具，先克隆到本地任意目录（记住路径）：
 
-# 3. 生成 Remake 台词数据（二选一）
-uv run python scena_voice_kuro_extractor.py          # KuroTools 路线
-# 或
-uv run python ingert_voice_kuro_extractor.py --jp-input <ing_dir> --output-dir .
-
-# 4. 生成 EVO 台词数据
-uv run python extract_voice_data.py
-
-# 5. 执行匹配
-uv run python main.py
+```powershell
+# 1) 解包 PAC 工具
+git clone https://github.com/eArmada8/kuro_dlc_tool.git
+# 2) 反编译 .dat 工具（依赖 zstandard，脚本会自动安装）
+git clone https://github.com/nnguyen259/KuroTools.git
 ```
 
-完成后会得到 `match_result.csv`，用浏览器打开 `match_result_review.html`（需先运行 `uv run python build_match_result_html.py`）即可人工校验。
+### 第一步：PAC → scena_data_*.json
+
+```powershell
+.\decompile_pac.ps1 `
+  -PacFile "D:\game\script.pac" `
+  -Language jp `
+  -ExtractPacScript "C:\tools\kuro_dlc_tool\sky_extract_pac.py" `
+  -Dat2PyScript "C:\tools\KuroTools\dat2py.py" `
+  -OutputDir ".\data"
+```
+
+产出：`scena_data_jp.json` / `scena_data_jp_Command.json` / `scena_data_jp_add_struct.json`。
+中文翻译把 `-Language` 改成 `sc` 再跑一次（用中文版游戏的 `script.pac`）。
+
+### 第二步：跑匹配（自动下载 EVO 侧数据）
+
+```powershell
+.\run_match.ps1 -Game fc -Fresh    # fc / sc / 3rd
+```
+
+脚本会自动从 GitHub Release 下载 `script_data_*.json` 和 `additional_voice_*.json`，然后调用 `main.py`。最终产出 `match_result_fc.csv`（或 `_sc` / `_3rd`）。
+
+> ⚠️ 运行前请先配置好 `.env`（API key）；LLM 缓存为跨作品共享，切换作品时请加 `-Fresh`。
 
 > **Quick Start**
 >
-> If you already have unpacked data, the shortest path is:
+> Two PowerShell scripts compress "unpack PAC" and "run matching" into single commands. All paths are passed as parameters — no hardcoded absolute paths.
 >
-> ```bash
-> git clone https://github.com/lxr2010/TrailsInTheSkyRemakeScriptAligner.git
-> cd TrailsInTheSkyRemakeScriptAligner
-> uv sync
-> copy .env.example .env   # then edit with your API key and base URL
-> uv run python scena_voice_kuro_extractor.py          # or Ingert route
-> uv run python extract_voice_data.py
-> uv run python main.py
+> **Prepare tools (once):**
+> ```powershell
+> git clone https://github.com/eArmada8/kuro_dlc_tool.git   # PAC unpacker
+> git clone https://github.com/nnguyen259/KuroTools.git      # .dat decompiler
 > ```
 >
-> This produces `match_result.csv`. Run `uv run python build_match_result_html.py` and open `match_result_review.html` in a browser for manual review.
+> **Step 1 — PAC to scena_data_*.json:**
+> ```powershell
+> .\decompile_pac.ps1 -PacFile "D:\game\script.pac" -Language jp `
+>   -ExtractPacScript "C:\tools\kuro_dlc_tool\sky_extract_pac.py" `
+>   -Dat2PyScript "C:\tools\KuroTools\dat2py.py" -OutputDir ".\data"
+> ```
+> Produces `scena_data_jp.json` / `scena_data_jp_Command.json` / `scena_data_jp_add_struct.json`. For the Chinese translation, rerun with `-Language sc` using the Chinese game's `script.pac`.
+>
+> **Step 2 — run matching (auto-downloads EVO-side data):**
+> ```powershell
+> .\run_match.ps1 -Game fc -Fresh    # fc / sc / 3rd
+> ```
+> The script downloads `script_data_*.json` and `additional_voice_*.json` from the GitHub Release, then invokes `main.py`, producing `match_result_fc.csv` (or `_sc` / `_3rd`).
+>
+> ⚠️ Configure `.env` (API key) first. LLM caches are shared across games — pass `-Fresh` when switching games.
 
 ---
 

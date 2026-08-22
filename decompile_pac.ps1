@@ -95,10 +95,9 @@ try {
     Pop-Location
 }
 
-$datDir = Join-Path $WorkDir "script\scena"
-if (-not (Test-Path $datDir)) { throw "未找到解包产物目录: $datDir" }
-$datFiles = @(Get-ChildItem $datDir -Filter *.dat -File)
-if ($datFiles.Count -eq 0) { throw "未在 $datDir 找到任何 .dat 文件" }
+# 动态定位 scena 目录（不同语言/作品前缀不同：script/scena、script_sc/scena 等）
+$datFiles = @(Get-ChildItem $WorkDir -Recurse -Filter *.dat -File | Where-Object { $_.FullName -match '[\\/]scena[\\/]' })
+if ($datFiles.Count -eq 0) { throw "解包产物中未找到 scena 目录下的 .dat 文件" }
 Write-Host "  找到 $($datFiles.Count) 个 .dat 文件"
 
 # ---- [2/3] 反编译 .dat -> .py ----

@@ -115,7 +115,7 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript | No
   trans_map = { t.id : t for t in trans_a } if trans_a is not None else {}
   with open(match_result_csv, 'w', encoding='utf-8', newline='\n') as f:
     writer = csv.writer(f)
-    writer.writerow(['RemakeVoiceID', 'RemakeScenaScriptFilename', 'RemakeScenaScriptLineno', 'RemakeScenaScriptAddStructLineno', 'RemakeScenaScriptTranslationLineno', 'RemakeScenaScriptTranslationAddStructLineno', 'OldScriptId', 'OldVoiceFilename', 'MatchType', 'RemakeVoiceCategory','RemakeVoiceTranslation', 'RemakeVoiceText', 'OldVoiceText',"Annotation"])
+    writer.writerow(['RemakeVoiceID', 'RemakeScenaScriptFilename', 'RemakeScenaScriptLineno', 'RemakeScenaScriptAddStructLineno', 'RemakeScenaScriptTranslationLineno', 'RemakeScenaScriptTranslationAddStructLineno', 'OldScriptId', 'OldCharacterId', 'OldVoiceFilename', 'MatchType', 'RemakeVoiceCategory','RemakeVoiceTranslation', 'RemakeVoiceText', 'OldVoiceText',"Annotation"])
     rows_to_write = []
     for pos_a, line_a in enumerate(script_a) :
       row_to_w = []
@@ -136,6 +136,7 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript | No
         best_pos_b = final_matches[pos_a][0]
         line_b:Line = script_b[best_pos_b]
         row_to_w.append(line_b.script_id)
+        row_to_w.append(line_b.character_id)
         row_to_w.append("ch" + line_b.voice_id)
         row_to_w.append("matched") # match type
         row_to_w.append("voice") # voice category
@@ -158,6 +159,7 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript | No
           best_pos_b = additional_matches[pos_a]
           uline_b:UnscriptedLine = unscripted_b[best_pos_b]
           row_to_w.append("") # Script ID
+          row_to_w.append("") # Character ID (unscripted has no character_id)
           row_to_w.append("ch" + uline_b.voice_id)
           row_to_w.append("voiceonly") # match type
           row_to_w.append("voice") # voice category
@@ -166,6 +168,7 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript | No
           row_to_w.append(uline_b.text) # OldVoiceText
         else:
           row_to_w.append("") # Script ID
+          row_to_w.append("") # Character ID
           row_to_w.append("") # Voice ID
           row_to_w.append("unmatched")
           row_to_w.append("voice") # voice category

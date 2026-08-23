@@ -94,7 +94,7 @@ def _pick_by_context(p, top_cands, anchors_dict, b_scenes):
     return min(top_cands, key=lambda c: abs(c - interp))
   return top_cands[0]
 
-def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anchors:dict[int,int], a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None, speaker_positions=None):
+def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anchors:dict[int,int], a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None, speaker_positions=None, norm_b_global=None):
 
   llm_cache = load_cached_llm_segment()
 
@@ -264,7 +264,7 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
 
   store_cached_llm_segment(llm_cache)
 
-  # ── Phase 4: 最终补扫未匹配位置（说话人精确 + 模糊）──
+  # ── Phase 4: 最终补扫未匹配位置（说话人精确 + 模糊，无说话人则全局）──
   if norm_b_by_speaker is not None and speaker_positions is not None:
     norm_b_texts = [normalize(t) for t in script_b]
     swept = 0
@@ -272,13 +272,18 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
       if p in single_matches or p in multiple_matches:
         continue
       expected = a_codes[p] if a_codes is not None and p < len(a_codes) else None
-      if expected is None:
-        continue
       na = normalize(script_a[p])
-      cands = speaker_recall(na, expected, norm_b_by_speaker, limit=200)
-      if not cands:
-        scored = [(fuzz.WRatio(na, norm_b_texts[pos]), pos) for pos in speaker_positions.get(expected, [])]
-        cands = [pos for s, pos in scored if s >= 85]
+      if expected is not None:
+        cands = speaker_recall(na, expected, norm_b_by_speaker, limit=200)
+        if not cands:
+          scored = [(fuzz.WRatio(na, norm_b_texts[pos]), pos) for pos in speaker_positions.get(expected, [])]
+          cands = [pos for s, pos in scored if s >= 85]
+      else:
+        # 无说话人信息：全局精确匹配（+模糊）
+        cands = norm_b_global.get(na, [])[:400] if norm_b_global else []
+        if not cands:
+          scored = [(fuzz.WRatio(na, norm_b_texts[pos]), pos) for pos in range(len(norm_b_texts))]
+          cands = [pos for s, pos in scored if s >= 92]
       if cands:
         single_matches[p] = _pick_by_context(p, cands, single_matches, b_scenes)
         swept += 1

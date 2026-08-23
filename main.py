@@ -57,8 +57,8 @@ def optimize_with_anchors(script_a, script_b, matches, output_file: Path, a_code
   with output_file.open("w", encoding="utf-8") as f:
     json.dump(final_mapping, f, indent=2, ensure_ascii=False)
 
-def solve_gaps(script_a, script_b, matches, anchors, output_file: Path, a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None, speaker_positions=None):
-  final_mapping = single_match(script_a.texts, script_b.texts, matches, anchors, a_codes=a_codes, b_codes=b_codes, norm_b_by_speaker=norm_b_by_speaker, b_scenes=b_scenes, speaker_positions=speaker_positions)
+def solve_gaps(script_a, script_b, matches, anchors, output_file: Path, a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None, speaker_positions=None, norm_b_global=None):
+  final_mapping = single_match(script_a.texts, script_b.texts, matches, anchors, a_codes=a_codes, b_codes=b_codes, norm_b_by_speaker=norm_b_by_speaker, b_scenes=b_scenes, speaker_positions=speaker_positions, norm_b_global=norm_b_global)
   with output_file.open("w", encoding="utf-8") as f:
     json.dump(final_mapping, f, indent=2, ensure_ascii=False)
 
@@ -165,6 +165,10 @@ def main():
   for pos, code in enumerate(b_codes):
     speaker_positions[code].append(pos)
   speaker_positions = dict(speaker_positions)
+  norm_b_global = defaultdict(list)
+  for pos, text in enumerate(script_b.texts):
+    norm_b_global[normalize_text(text)].append(pos)
+  norm_b_global = dict(norm_b_global)
 
   translation_path = Path(args.translation)
   trans_a = None
@@ -214,7 +218,7 @@ def main():
 
   if should_run_step("top_k", active_steps, forced_start, output_paths["top_k"]):
     logger.info("执行步骤: top_k")
-    solve_gaps(script_a, script_b, matches, final_mapping, output_paths["top_k"], a_codes, b_codes, norm_b_by_speaker, b_scenes, speaker_positions)
+    solve_gaps(script_a, script_b, matches, final_mapping, output_paths["top_k"], a_codes, b_codes, norm_b_by_speaker, b_scenes, speaker_positions, norm_b_global)
   else:
     logger.info(f"跳过步骤: top_k，已存在 {output_paths['top_k']}")
   top_k_matches = read_int_key_dict(output_paths["top_k"])

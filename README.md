@@ -2,17 +2,17 @@
 
 ## 项目概述
 
-将**空之轨迹 1st（Remake）**的台词与**空之轨迹 FC 进化版（EVO）**的台词自动对齐，生成一一对应的 CSV 匹配表，方便后续人工校对、音频绑定等用途。
+将**空之轨迹 1st / 2nd（Remake）**的台词与对应的**空之轨迹 FC / SC 进化版（EVO）**的台词自动对齐，生成一一对应的 CSV 匹配表，方便后续人工校对、音频绑定等用途。
 
-最近为了更好地应用大模型能力，对原来的 [sora-scena-matcher](https://github.com/lxr2010/sora-scena-matcher) 进行了重构。重构后的脚本设计上也可迁移到将来的空之轨迹 2nd，甚至零/碧轨脚本比对场景。
+最近为了更好地应用大模型能力，对原来的 [sora-scena-matcher](https://github.com/lxr2010/sora-scena-matcher) 进行了重构。脚本已支持 1st 与 2nd，设计上也可迁移到 3rd，甚至零/碧轨脚本比对场景。
 
 核心流程：从 Remake 反编译结果中提取台词 → 从 EVO 文本中提取台词 → 多阶段匹配输出 CSV。
 
 > **Overview**
 >
-> Automatically align dialogue lines between **Trails in the Sky the 1st (Remake)** and **Trails in the Sky FC Evolution (EVO)**, producing a one-to-one CSV match table for downstream manual review and voice binding.
+> Automatically align dialogue lines between **Trails in the Sky the 1st / 2nd (Remake)** and their corresponding **FC / SC Evolution (EVO)** counterparts, producing a one-to-one CSV match table for downstream manual review and voice binding.
 >
-> This is a refactor of [sora-scena-matcher](https://github.com/lxr2010/sora-scena-matcher), rebuilt to better leverage LLM capabilities. The same architecture is designed to be portable to SC / 3rd and potentially Zero/Ao.
+> This is a refactor of [sora-scena-matcher](https://github.com/lxr2010/sora-scena-matcher), rebuilt to better leverage LLM capabilities. The 1st and 2nd are supported; the same architecture is portable to 3rd and potentially Zero/Ao.
 >
 > Core pipeline: extract lines from Remake decompilation output → extract lines from EVO text → multi-stage alignment → CSV.
 
@@ -91,7 +91,7 @@ git clone https://github.com/nnguyen259/KuroTools.git
 .\run_match.ps1 -Game fc -Fresh    # fc / sc / 3rd
 ```
 
-脚本会自动从 GitHub Release 下载 `script_data_*.json` 和 `additional_voice_*.json`，然后调用 `main.py`。最终产出 `match_result_fc.csv`（或 `_sc` / `_3rd`）。
+脚本会自动从 GitHub Release 下载 `script_data_*.json`、`additional_voice_*.json` 和 `speaker_map_*.json`（说话人映射，可选），然后调用 `main.py`。最终产出 `match_result_fc.csv`（或 `_sc` / `_3rd`）。
 
 > ⚠️ 运行前请先配置好 `.env`（API key）；LLM 缓存为跨作品共享，切换作品时请加 `-Fresh`。
 
@@ -117,7 +117,7 @@ git clone https://github.com/nnguyen259/KuroTools.git
 > ```powershell
 > .\run_match.ps1 -Game fc -Fresh    # fc / sc / 3rd
 > ```
-> The script downloads `script_data_*.json` and `additional_voice_*.json` from the GitHub Release, then invokes `main.py`, producing `match_result_fc.csv` (or `_sc` / `_3rd`).
+> The script downloads `script_data_*.json`, `additional_voice_*.json`, and `speaker_map_*.json` (speaker mapping, optional) from the GitHub Release, then invokes `main.py`, producing `match_result_fc.csv` (or `_sc` / `_3rd`).
 >
 > ⚠️ Configure `.env` (API key) first. LLM caches are shared across games — pass `-Fresh` when switching games.
 
@@ -278,6 +278,8 @@ uv run python main.py --from-step top_k
 | `--unscripted-matches-json` | `unscripted_matches.json` | additional 步骤输出 |
 | `--output-csv` | `match_result.csv` | 最终输出 CSV |
 | `--from-step` | （无） | 从指定步骤开始 |
+| `--new-id-start` | `50001` | 无真实语音 ID 时的合成 ID 起始值（SC 建议 100000） |
+| `--speaker-map` | `speaker_map.json` | 说话人映射文件（由 derive_speaker_map.py 推导，缺失则退化为纯文本匹配） |
 
 ### 输出文件
 
@@ -452,11 +454,15 @@ flowchart TD
 | `ingert_voice_kuro_extractor.py` | 从 Ingert `.ing` 格式提取相同数据 |
 | `extract_voice_data.py` | 从 EVO 文本生成 `script_data.json` |
 | `build_match_result_html.py` | 生成音频校验 HTML |
+| `decompile_pac.ps1` | 一键 PAC 解包反编译 |
+| `run_match.ps1` | 一键跑匹配（自动下载 EVO 数据与说话人映射） |
+| `derive_speaker_map.py` | 从匹配结果自举推导说话人映射 |
 | `models.py` | Pydantic 数据模型 |
 | `llm.py` | LLM 调用封装 |
 | `anchors.py` | 锚点优化逻辑 |
-| `line_solver.py` | 行级匹配（编辑距离） |
+| `line_solver.py` | 行级匹配与歧义消解 |
 | `script_searcher.py` | 基于 MinHash 的脚本搜索 |
+| `speaker.py` | 说话人映射加载与角色/场景/序号解析 |
 | `synonyms.py` | 片假名/专有名词归一化 |
 | `gap_analysis.py` | 匹配间隙分析 |
 | `gen_result.py` | CSV 输出生成 |
@@ -481,7 +487,7 @@ flowchart TD
 
 ## 历史匹配统计
 
-以下是一次完整运行的质量参考（空之轨迹 1st）：
+### 空之轨迹 1st
 
 | 指标 | 数值 |
 |---|---|
@@ -495,27 +501,44 @@ flowchart TD
 
 作为对比，人工校对结果为 27,537 条。
 
+### 空之轨迹 2nd（demo）
+
+| 指标 | 数值 |
+|---|---|
+| Remake 总台词数 | 17,466 |
+| 总匹配数 | 16,127 |
+| 精确同名（与官方语音表一致） | **98.3%** |
+| 说话人错 | 12 |
+| 同角色选错文件 | 149 |
+| 漏配 | 86 |
+
 > ### Historical Matching Stats
 >
-> One full run achieved **29,180** matched lines, compared to 27,537 from manual proofreading. See the table above for the breakdown.
+> **1st**: one full run achieved **29,180** matched lines, compared to 27,537 from manual proofreading.
+>
+> **2nd (demo)**: 16,127 matches over 17,466 lines; **98.3%** exact-filename agreement against the official voice table.
 
 ---
 
 ## 特点
 
 - 位置敏感哈希（MinHash LSH）+ 锚点优化 + 最小编辑距离匹配
+- **说话人约束**：利用 remake `args[0]` 与 EVO 角色码映射，区分同台词不同角色
+- **场景/序列插值**：短文本重复时按场景与场景内序号选位
 - 保留多候选项匹配
 - `rapidfuzz WRatio` 分数普遍超过 92
-- 复杂场景使用 LLM 辅助预测
+- 仅极少数复杂场景使用 LLM 辅助预测
 - 处理片假名、轨迹系列专有名词、ED6 旧引擎 Gaiji
 - 无 PyTorch / GPU 依赖
 
 > ### Features
 >
 > - MinHash LSH + anchor-based optimization + edit-distance matching
+> - **Speaker constraint**: uses remake `args[0]` ↔ EVO character-code mapping to distinguish same text from different speakers
+> - **Scene/sequence interpolation**: resolves repeated short text by scene and in-scene sequence
 > - Multi-candidate match preservation
 > - `rapidfuzz WRatio` > 92 for matched items
-> - LLM-assisted disambiguation for hard cases
+> - LLM-assisted disambiguation only for the few hard cases
 > - Katakana, Kiseki-specific terms, and ED6 gaiji handling
 > - No PyTorch / GPU required
 
@@ -523,16 +546,22 @@ flowchart TD
 
 ## SC / 3rd 迁移说明
 
-当前流程不依赖 1st 专属格式，迁移到 SC / 3rd 的关键是替换输入数据。
+2nd（SC）已正式支持：`run_match.ps1 -Game sc` 一键运行，说话人映射 `speaker_map_sc.json` 已随 Release 提供。3rd 迁移的关键是替换输入数据并推导自己的说话人映射。
 
 ### 1) 准备输入数据
 - **Remake 侧**：沿用本仓库的提取流程，生成对应作品的 `scena_data_jp_Command.json` 与 `scena_data_sc_Command.json`。
 - **EVO/原版侧**：用 `extract_voice_data.py`（或同结构脚本）生成对应作品的 `script_data.json`。
 - A/B 两侧应保持同一作品、同一区域版本。
 
-### 2) 文件名与路径适配
-- 最简单：把生成的数据直接命名为 `main.py` 默认读取的文件名。
-- 推荐：为 SC / 3rd 分别创建独立入口脚本，修改 `RemakeScript(...)` / `Script(...)` 的输入路径。
+### 2) 推导说话人映射（自举）
+```bash
+# 第一轮：不带映射跑匹配
+uv run python main.py --speaker-map /dev/null
+# 从结果推导映射
+uv run python derive_speaker_map.py scena_data_jp_Command.json match_result.csv -o speaker_map_3rd.json
+# 第二轮：带映射重跑，精确率显著提升
+uv run python main.py --speaker-map speaker_map_3rd.json
+```
 
 ### 3) 验证步骤
 1. 检查 `matches.json` 的召回率。
@@ -541,11 +570,16 @@ flowchart TD
 
 > ### Migration to SC / 3rd
 >
-> The pipeline is game-agnostic. Replace the input data:
+> 2nd (SC) is now officially supported: `run_match.ps1 -Game sc` runs end-to-end, with `speaker_map_sc.json` shipped in the Release. For 3rd, replace the input data and derive your own speaker map.
 >
 > 1. Generate `scena_data_*` for the target game using the same extraction scripts.
 > 2. Generate `script_data.json` using `extract_voice_data.py`.
-> 3. Adapt file paths — either rename to defaults or create separate entry scripts.
+> 3. Bootstrap the speaker map:
+> ```bash
+> uv run python main.py --speaker-map /dev/null   # first pass, no map
+> uv run python derive_speaker_map.py scena_data_jp_Command.json match_result.csv -o speaker_map_3rd.json
+> uv run python main.py --speaker-map speaker_map_3rd.json   # second pass
+> ```
 > 4. Validate: check recall in `matches.json`, anchor coverage in `anchors.json`, and spot-check `match_result.csv` at chapter starts, branches, and post-battle dialogues.
 
 ---

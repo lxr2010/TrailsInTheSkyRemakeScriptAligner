@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,8 @@ from gen_result import gen_csv, explain_llm_alignments
 from line_solver import single_match
 from models import RemakeScript, Script, UnscriptedConversation
 from script_searcher import ScriptSearcher
+from speaker import args0_to_code, voice_id_to_code, voice_id_to_scene
+from synonyms import normalize as normalize_text
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -49,13 +52,13 @@ def refresh_matches(script_a, script_b, output_file: Path):
   with output_file.open("w", encoding="utf-8") as f:
     json.dump(matches, f, indent=2, ensure_ascii=False)
 
-def optimize_with_anchors(script_a, script_b, matches, output_file: Path):
-  final_mapping = process_with_anchors(script_a.texts, script_b.texts, matches)
+def optimize_with_anchors(script_a, script_b, matches, output_file: Path, a_codes=None, b_codes=None):
+  final_mapping = process_with_anchors(script_a.texts, script_b.texts, matches, a_codes=a_codes, b_codes=b_codes)
   with output_file.open("w", encoding="utf-8") as f:
     json.dump(final_mapping, f, indent=2, ensure_ascii=False)
 
-def solve_gaps(script_a, script_b, matches, anchors, output_file: Path):
-  final_mapping = single_match(script_a.texts, script_b.texts, matches, anchors)
+def solve_gaps(script_a, script_b, matches, anchors, output_file: Path, a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None):
+  final_mapping = single_match(script_a.texts, script_b.texts, matches, anchors, a_codes=a_codes, b_codes=b_codes, norm_b_by_speaker=norm_b_by_speaker, b_scenes=b_scenes)
   with output_file.open("w", encoding="utf-8") as f:
     json.dump(final_mapping, f, indent=2, ensure_ascii=False)
 
@@ -150,6 +153,15 @@ def main():
 
   script_b = Script(args.script_data)
 
+  a_codes = [args0_to_code(line.speaker) for line in script_a]
+  b_codes = [voice_id_to_code(line.voice_id) for line in script_b]
+  b_scenes = [voice_id_to_scene(line.voice_id) for line in script_b]
+  # 说话人 -> 归一化文本 -> [位置] 倒排索引，用于短文本补召回
+  norm_b_by_speaker = defaultdict(lambda: defaultdict(list))
+  for pos, (code, text) in enumerate(zip(b_codes, script_b.texts)):
+    norm_b_by_speaker[code][normalize_text(text)].append(pos)
+  norm_b_by_speaker = {k: dict(v) for k, v in norm_b_by_speaker.items()}
+
   translation_path = Path(args.translation)
   trans_a = None
   if translation_path.exists():
@@ -191,14 +203,14 @@ def main():
 
   if should_run_step("anchors", active_steps, forced_start, output_paths["anchors"]):
     logger.info("执行步骤: anchors")
-    optimize_with_anchors(script_a, script_b, matches, output_paths["anchors"])
+    optimize_with_anchors(script_a, script_b, matches, output_paths["anchors"], a_codes, b_codes)
   else:
     logger.info(f"跳过步骤: anchors，已存在 {output_paths['anchors']}")
   final_mapping = read_int_key_dict(output_paths["anchors"])
 
   if should_run_step("top_k", active_steps, forced_start, output_paths["top_k"]):
     logger.info("执行步骤: top_k")
-    solve_gaps(script_a, script_b, matches, final_mapping, output_paths["top_k"])
+    solve_gaps(script_a, script_b, matches, final_mapping, output_paths["top_k"], a_codes, b_codes, norm_b_by_speaker, b_scenes)
   else:
     logger.info(f"跳过步骤: top_k，已存在 {output_paths['top_k']}")
   top_k_matches = read_int_key_dict(output_paths["top_k"])

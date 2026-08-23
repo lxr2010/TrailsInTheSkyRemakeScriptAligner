@@ -36,6 +36,11 @@ class Line(UnscriptedLine):
     context_prev: str
     context_next: str
 
+    @property
+    def speaker_code(self):
+        """voice_id 前三位的角色码，如 0010290822V -> 001"""
+        return self.voice_id[:3] if len(self.voice_id) >= 3 else (self.voice_id or "")
+
 class Conversation(BaseModel):
     lines: list[Line]
     def __len__(self) -> int:
@@ -76,6 +81,7 @@ class RemakeLine(BaseModel):
     id: int 
     text: str
     remake_voice_id: int | None = None
+    speaker: int | None = None
     filebase: str
     lineno: int
     lineno_corr: int | None = None
@@ -92,6 +98,8 @@ class RemakeLine(BaseModel):
                 if len(args) >= 2 and args[-2] == 11 and isinstance(args[-1], int):
                     data["remake_voice_id"] = args[-1]
                     data["text"] = ""
+                if isinstance(args[0], int):
+                    data["speaker"] = args[0]
             file = data.pop("file", None)
             if file:
                 data["filebase"] = Path(file).stem
@@ -110,6 +118,8 @@ class RemakeLine(BaseModel):
                 if len(args) >= 2 and args[-2] == 11 and isinstance(args[-1], int):
                     data["remake_voice_id"] = args[-1]
                     data["text"] = ""
+                if isinstance(args[0], int):
+                    data["speaker"] = args[0]
             file = data.file
             if file:
                 data["filebase"] = Path(file).stem

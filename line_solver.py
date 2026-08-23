@@ -28,7 +28,73 @@ def store_cached_llm_segment(llm_cache):
   with open("llm_segments.json", "w", encoding="utf-8") as f:
     json.dump(llm_cache, f, indent=2, ensure_ascii=False)
 
-def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anchors:dict[int,int]):
+def speaker_recall(norm_a, expected, norm_b_by_speaker, limit=8):
+  """短文本补召回：按说话人查找归一化文本精确匹配的位置。"""
+  if not norm_b_by_speaker:
+    return []
+  d = norm_b_by_speaker.get(expected)
+  if not d:
+    return []
+  return d.get(norm_a, [])[:limit]
+
+def _interp_pos(p, anchors_dict):
+  """根据最近已确定的锚点线性插值，估算 p 应该对应的 B 位置。"""
+  if not anchors_dict:
+    return None
+  items = sorted(anchors_dict.items())
+  prev = None
+  nxt = None
+  for a, b in items:
+    if a <= p:
+      prev = (a, b)
+    else:
+      nxt = (a, b)
+      break
+  if prev is not None and nxt is not None:
+    a0, b0 = prev
+    a1, b1 = nxt
+    if a1 > a0:
+      return b0 + (b1 - b0) * (p - a0) / (a1 - a0)
+  if prev is not None:
+    return prev[1]
+  if nxt is not None:
+    return nxt[1]
+  return None
+
+def _nearest_anchor(p, anchors_dict):
+  if not anchors_dict:
+    return None, None
+  items = sorted(anchors_dict.items())
+  prev = None
+  nxt = None
+  for a, b in items:
+    if a <= p:
+      prev = (a, b)
+    else:
+      nxt = (a, b)
+      break
+  return prev, nxt
+
+def _pick_by_context(p, top_cands, anchors_dict, b_scenes):
+  """文本完全一致时，按场景优先 + 插值选位置最合理的候选。"""
+  if len(top_cands) == 1:
+    return top_cands[0]
+  prev, nxt = _nearest_anchor(p, anchors_dict)
+  scene = None
+  if prev is not None and b_scenes is not None and prev[1] < len(b_scenes):
+    scene = b_scenes[prev[1]]
+  elif nxt is not None and b_scenes is not None and nxt[1] < len(b_scenes):
+    scene = b_scenes[nxt[1]]
+  if scene:
+    same = [c for c in top_cands if b_scenes is not None and c < len(b_scenes) and b_scenes[c] == scene]
+    if same:
+      top_cands = same
+  interp = _interp_pos(p, anchors_dict)
+  if interp is not None:
+    return min(top_cands, key=lambda c: abs(c - interp))
+  return top_cands[0]
+
+def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anchors:dict[int,int], a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None):
 
   llm_cache = load_cached_llm_segment()
 
@@ -78,6 +144,13 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
         candidates.add(p_b + 1)
         candidates.add(p_b + 2)
 
+    # 说话人补召回：补充同说话人精确文本匹配的候选
+    if norm_b_by_speaker is not None:
+      for p in [pos_a, pos_a + 1, pos_a + 2]:
+        expected = a_codes[p] if a_codes is not None and p < len(a_codes) else None
+        if expected is not None:
+          candidates.update(speaker_recall(normalize(script_a[p]), expected, norm_b_by_speaker))
+
     for p in [pos_a, pos_a + 1, pos_a + 2]:
       if p in temp_single or p in llm_cache:
         continue
@@ -85,13 +158,22 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
       good = {c: score_map[c] for c in candidates if score_map[c] >= 92}
       if not good:
         continue
+      # 说话人约束：高分候选里优先选角色一致的
+      expected = a_codes[p] if a_codes is not None and p < len(a_codes) else None
+      if expected is not None and b_codes is not None:
+        spk = {c: good[c] for c in good if c < len(b_codes) and b_codes[c] == expected}
+        if spk:
+          good = spk
       max_score = max(good.values())
       max_c = max(good, key=good.get)
       max_norm = get_norm_text_b(max_c)
       top_cands = [c for c in good if good[c] == max_score]
 
-      if len(top_cands) == 1 or all(max_norm == get_norm_text_b(c) for c in top_cands):
-        temp_single[p] = max_c
+      if len(top_cands) == 1:
+        temp_single[p] = top_cands[0]
+      elif all(max_norm == get_norm_text_b(c) for c in top_cands):
+        # 文本完全一致时，场景优先 + 插值选位置
+        temp_single[p] = _pick_by_context(p, top_cands, temp_single, b_scenes)
       else:
         if p not in pending_llm:
           pending_llm[p] = sorted(good.keys())
@@ -143,6 +225,13 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
         candidates.add(p_b + 1)
         candidates.add(p_b + 2)
 
+    # 说话人补召回：补充同说话人精确文本匹配的候选
+    if norm_b_by_speaker is not None:
+      for p in [pos_a, pos_a + 1, pos_a + 2]:
+        expected = a_codes[p] if a_codes is not None and p < len(a_codes) else None
+        if expected is not None:
+          candidates.update(speaker_recall(normalize(script_a[p]), expected, norm_b_by_speaker))
+
     for p in [pos_a, pos_a + 1, pos_a + 2]:
       if p in single_matches:
         continue
@@ -150,13 +239,22 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
       good = {c: score_map[c] for c in candidates if score_map[c] >= 92}
       if not good:
         continue
+      # 说话人约束：高分候选里优先选角色一致的
+      expected = a_codes[p] if a_codes is not None and p < len(a_codes) else None
+      if expected is not None and b_codes is not None:
+        spk = {c: good[c] for c in good if c < len(b_codes) and b_codes[c] == expected}
+        if spk:
+          good = spk
       max_score = max(good.values())
       max_c = max(good, key=good.get)
       max_norm = get_norm_text_b(max_c)
       top_cands = [c for c in good if good[c] == max_score]
 
-      if len(top_cands) == 1 or all(max_norm == get_norm_text_b(c) for c in top_cands):
-        single_matches[p] = max_c
+      if len(top_cands) == 1:
+        single_matches[p] = top_cands[0]
+      elif all(max_norm == get_norm_text_b(c) for c in top_cands):
+        # 文本完全一致时，场景优先 + 插值选位置
+        single_matches[p] = _pick_by_context(p, top_cands, single_matches, b_scenes)
       else:
         llm_match = llm_cache.get(p)
         if llm_match and llm_match.get('selected_id') is not None:

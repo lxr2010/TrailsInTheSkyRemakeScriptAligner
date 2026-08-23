@@ -6,10 +6,11 @@ from rapidfuzz import fuzz
 from llm import call_llm_for_local_alignment
 logger = logging.getLogger()
 
-def align_linear_gap(sub_a, sub_b, threshold=80):
+def align_linear_gap(sub_a, sub_b, threshold=80, a_codes=None, b_codes=None):
     """
     针对 gap 接近的区间进行自动对齐
     sub_a, sub_b: 台词列表 (List of strings)
+    a_codes, b_codes: 各自行对应的说话人角色码，用于同分时决胜
     """
     local_mapping = {}
 
@@ -39,21 +40,32 @@ def align_linear_gap(sub_a, sub_b, threshold=80):
         for i, line_a in enumerate(norm_sub_a):
             if i in matched_a:
                 continue
+            expected = a_codes[i] if a_codes is not None and i < len(a_codes) else None
+            cands = []
             for j, line_b in enumerate(norm_sub_b):
                 if j in matched_b:
                     continue
                 score = fuzz.WRatio(line_a, line_b)
                 if score >= 92:
-                    local_mapping[i] = j
-                    logger.info(f"  A[{i}] -> B[{j}] (score: {score})")
-                    matched_a.add(i)
-                    matched_b.add(j)
-                    break
+                    cands.append((score, j))
+            if not cands:
+                continue
+            # 说话人约束：同分/近似时优先选角色一致的
+            if expected is not None and b_codes is not None:
+                spk = [(s, j) for s, j in cands if j < len(b_codes) and b_codes[j] == expected]
+                if spk:
+                    cands = spk
+            cands.sort(key=lambda x: x[0], reverse=True)
+            best_score, best_j = cands[0]
+            local_mapping[i] = best_j
+            logger.info(f"  A[{i}] -> B[{best_j}] (score: {best_score})")
+            matched_a.add(i)
+            matched_b.add(best_j)
 
     # 或者直接留空，让它们作为“未对齐项”
     return local_mapping
 
-def find_stable_anchors(raw_matches:dict[int, list[int]], window_size=2):
+def find_stable_anchors(raw_matches:dict[int, list[int]], window_size=2, a_codes=None, b_codes=None):
     stable_anchors = {}
     
     for pos_a, b_candidates in raw_matches.items():
@@ -61,6 +73,17 @@ def find_stable_anchors(raw_matches:dict[int, list[int]], window_size=2):
             # 唯一匹配，暂时信任
             stable_anchors[pos_a] = b_candidates[0]
             continue
+
+        # 说话人约束：多个 100% 候选时，优先选角色一致的
+        if a_codes is not None and b_codes is not None:
+            expected = a_codes[pos_a] if pos_a < len(a_codes) else None
+            if expected is not None:
+                spk = [c for c in b_candidates if c < len(b_codes) and b_codes[c] == expected]
+                if len(spk) == 1:
+                    stable_anchors[pos_a] = spk[0]
+                    continue
+                elif spk:
+                    b_candidates = spk
             
         # 存在多个 100% 匹配，寻找“有邻居支持”的那一个
         best_b = None
@@ -99,13 +122,13 @@ def find_stable_anchors(raw_matches:dict[int, list[int]], window_size=2):
 
     return unwrapped_anchors
 
-def process_with_anchors(script_a, script_b, matches, llm_cache=None):
+def process_with_anchors(script_a, script_b, matches, llm_cache=None, a_codes=None, b_codes=None):
     # 1. 提取所有 100% 分数的锚点
     raw_matches = {}
     for match in matches:
        raw_matches[match['pos_a']] = [m['pos_b'] for m in match['matches'] if m['score'] == 100]
         
-    stable_anchors: dict[int,int] = find_stable_anchors(raw_matches)
+    stable_anchors: dict[int,int] = find_stable_anchors(raw_matches, a_codes=a_codes, b_codes=b_codes)
     # 2. 按位置排序
 
     def compute_gaps(anchors):
@@ -141,7 +164,9 @@ def process_with_anchors(script_a, script_b, matches, llm_cache=None):
                 sub_a = script_a[curr_a + 1 : next_a]
                 sub_b = script_b[curr_b + 1 : next_b]
 
-                local_map = align_linear_gap(sub_a, sub_b)
+                local_map = align_linear_gap(sub_a, sub_b,
+                    a_codes=a_codes[curr_a + 1:next_a] if a_codes is not None else None,
+                    b_codes=b_codes[curr_b + 1:next_b] if b_codes is not None else None)
                 for rel_a, rel_b in local_map.items():
                     final_mapping[curr_a + 1 + rel_a] = curr_b + 1 + rel_b
             else:
@@ -182,15 +207,17 @@ def process_with_anchors(script_a, script_b, matches, llm_cache=None):
             b_to_reason = {}
             none_alignments = []
             for item in local_alignment:
-                if item['a'] is None or item['b'] is None:
+                if item.get('a') is None or item.get('b') is None:
                     none_alignments.append(item)
                     continue
-                for b_idx in item['b']:
+                a_vals = item['a'] if isinstance(item['a'], list) else [item['a']]
+                b_vals = item['b'] if isinstance(item['b'], list) else [item['b']]
+                for b_idx in b_vals:
                     if b_idx is not None:
                         b_to_a_map.setdefault(b_idx, [])
                         b_to_score.setdefault(b_idx, 1.0)
                         b_to_reason.setdefault(b_idx, '')
-                        for a_idx in item['a']:
+                        for a_idx in a_vals:
                             if a_idx is not None:
                                 b_to_a_map[b_idx].append(a_idx)
                             b_to_score[b_idx] = min(item.get('score', 1.0), b_to_score[b_idx])

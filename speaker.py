@@ -38,3 +38,10 @@ def voice_id_to_scene(voice_id: str) -> str:
     if len(voice_id) < 6:
         return ""
     return voice_id[3:6]
+
+def voice_id_to_seq(voice_id: str) -> int:
+    """EVO voice_id -> 场景内序号（第7-10位）。"""
+    try:
+        return int(voice_id[6:10]) if len(voice_id) >= 10 else 0
+    except ValueError:
+        return 0

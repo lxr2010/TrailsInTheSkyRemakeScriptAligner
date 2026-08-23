@@ -75,8 +75,8 @@ def _nearest_anchor(p, anchors_dict):
       break
   return prev, nxt
 
-def _pick_by_context(p, top_cands, anchors_dict, b_scenes):
-  """文本完全一致时，按场景优先 + 插值选位置最合理的候选。"""
+def _pick_by_context(p, top_cands, anchors_dict, b_scenes, b_seqs=None):
+  """文本完全一致时，按场景优先 + 场景内序列插值选位置。"""
   if len(top_cands) == 1:
     return top_cands[0]
   prev, nxt = _nearest_anchor(p, anchors_dict)
@@ -89,12 +89,40 @@ def _pick_by_context(p, top_cands, anchors_dict, b_scenes):
     same = [c for c in top_cands if b_scenes is not None and c < len(b_scenes) and b_scenes[c] == scene]
     if same:
       top_cands = same
+      if b_seqs is not None:
+        seq_interp = _seq_interp(p, anchors_dict, b_scenes, b_seqs, scene)
+        if seq_interp is not None:
+          return min(top_cands, key=lambda c: abs(b_seqs[c] - seq_interp))
   interp = _interp_pos(p, anchors_dict)
   if interp is not None:
     return min(top_cands, key=lambda c: abs(c - interp))
   return top_cands[0]
 
-def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anchors:dict[int,int], a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None, speaker_positions=None, norm_b_global=None):
+def _seq_interp(p, anchors_dict, b_scenes, b_seqs, scene):
+  """同场景内，按前后同场景锚点的序列线性插值。"""
+  items = sorted(anchors_dict.items())
+  prev = None
+  nxt = None
+  for a, b in items:
+    if a <= p:
+      if b_scenes is not None and b < len(b_scenes) and b_scenes[b] == scene:
+        prev = (a, b)
+    else:
+      if b_scenes is not None and b < len(b_scenes) and b_scenes[b] == scene:
+        nxt = (a, b)
+        break
+  if prev is not None and nxt is not None:
+    a0, b0 = prev
+    a1, b1 = nxt
+    if a1 > a0 and b_seqs is not None:
+      return b_seqs[b0] + (b_seqs[b1] - b_seqs[b0]) * (p - a0) / (a1 - a0)
+  if prev is not None and b_seqs is not None:
+    return b_seqs[prev[1]]
+  if nxt is not None and b_seqs is not None:
+    return b_seqs[nxt[1]]
+  return None
+
+def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anchors:dict[int,int], a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None, speaker_positions=None, norm_b_global=None, b_seqs=None):
 
   llm_cache = load_cached_llm_segment()
 
@@ -173,7 +201,7 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
         temp_single[p] = top_cands[0]
       elif len({normalize(script_b[c]) for c in top_cands}) == 1:
         # 单行归一化文本一致（含窗口不同），场景优先 + 插值选位置
-        temp_single[p] = _pick_by_context(p, top_cands, temp_single, b_scenes)
+        temp_single[p] = _pick_by_context(p, top_cands, temp_single, b_scenes, b_seqs)
       else:
         if p not in pending_llm:
           pending_llm[p] = sorted(good.keys())
@@ -254,7 +282,7 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
         single_matches[p] = top_cands[0]
       elif len({normalize(script_b[c]) for c in top_cands}) == 1:
         # 单行归一化文本一致（含窗口不同），场景优先 + 插值选位置
-        single_matches[p] = _pick_by_context(p, top_cands, single_matches, b_scenes)
+        single_matches[p] = _pick_by_context(p, top_cands, single_matches, b_scenes, b_seqs)
       else:
         llm_match = llm_cache.get(p)
         if llm_match and llm_match.get('selected_id') is not None:
@@ -285,7 +313,7 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
           scored = [(fuzz.WRatio(na, norm_b_texts[pos]), pos) for pos in range(len(norm_b_texts))]
           cands = [pos for s, pos in scored if s >= 92]
       if cands:
-        single_matches[p] = _pick_by_context(p, cands, single_matches, b_scenes)
+        single_matches[p] = _pick_by_context(p, cands, single_matches, b_scenes, b_seqs)
         swept += 1
     if swept:
       logger.info(f"最终补扫匹配了 {swept} 个未匹配位置")

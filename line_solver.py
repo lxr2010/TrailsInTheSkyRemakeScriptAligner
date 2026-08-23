@@ -278,7 +278,7 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
       cands = speaker_recall(na, expected, norm_b_by_speaker, limit=200)
       if not cands:
         scored = [(fuzz.WRatio(na, norm_b_texts[pos]), pos) for pos in speaker_positions.get(expected, [])]
-        cands = [pos for s, pos in scored if s >= 92]
+        cands = [pos for s, pos in scored if s >= 85]
       if cands:
         single_matches[p] = _pick_by_context(p, cands, single_matches, b_scenes)
         swept += 1

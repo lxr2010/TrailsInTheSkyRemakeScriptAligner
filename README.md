@@ -148,6 +148,28 @@ OPENAI_BASE_URL=https://api.deepseek.com
 > - `OPENAI_BASE_URL`: any OpenAI-compatible endpoint works.
 > - The default model is configured in `llm.py` (currently `deepseek-v4-flash`). Edit that file to switch models.
 
+### LLM 开销
+
+默认模型 `deepseek-v4-flash` 的参考开销：
+
+| 场景 | 开销 |
+|---|---|
+| 未配置说话人映射（纯文本匹配） | 约 **30 RMB**（低谷时段） |
+| 配置说话人映射后 | 仅约 **10 次** LLM 调用，开销可忽略 |
+
+> 说话人映射（`speaker_map_*.json`）由 `derive_speaker_map.py` 从匹配结果自举推导，或随 Release 下载。
+
+> ### LLM Cost
+>
+> Reference cost for the default `deepseek-v4-flash` model:
+>
+> | Scenario | Cost |
+> |---|---|
+> | Without speaker map (pure text matching) | ~**30 RMB** (off-peak hours) |
+> | With speaker map | only ~**10** LLM calls, negligible |
+>
+> The speaker map (`speaker_map_*.json`) is bootstrapped via `derive_speaker_map.py`, or downloaded from the Release.
+
 ---
 
 ## 输入数据准备

@@ -102,6 +102,7 @@ $anchorsJson = "anchors_$prefix.json"
 $topKJson = "top_k_matches_$prefix.json"
 $unscriptedJson = "unscripted_matches_$prefix.json"
 $outputCsv = "match_result_$prefix.csv"
+$speakerMap = "speaker_map_$prefix.json"
 
 # ---- 构建 main.py 参数 ----
 $mainArgs = @(
@@ -114,7 +115,8 @@ $mainArgs = @(
     "--top-k-json", $topKJson,
     "--unscripted-matches-json", $unscriptedJson,
     "--output-csv", $outputCsv,
-    "--new-id-start", $NewIdStart
+    "--new-id-start", $NewIdStart,
+    "--speaker-map", $speakerMap
 )
 if ($Translation) {
     $mainArgs += @("--translation", $Translation)

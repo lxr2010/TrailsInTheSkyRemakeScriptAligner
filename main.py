@@ -10,7 +10,7 @@ from gen_result import gen_csv, explain_llm_alignments
 from line_solver import single_match
 from models import RemakeScript, Script, UnscriptedConversation
 from script_searcher import ScriptSearcher
-from speaker import args0_to_code, voice_id_to_code, voice_id_to_scene, voice_id_to_seq
+from speaker import args0_to_code, load_speaker_map, voice_id_to_code, voice_id_to_scene, voice_id_to_seq
 from synonyms import normalize as normalize_text
 
 logger = logging.getLogger()
@@ -142,6 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
   parser.add_argument("--unscripted-matches-json", default="unscripted_matches.json")
   parser.add_argument("--output-csv", default="match_result.csv")
   parser.add_argument("--new-id-start", type=int, default=50001, help="无真实语音 ID 时的合成 ID 起始值（SC 建议 100000）")
+  parser.add_argument("--speaker-map", default="speaker_map.json", help="说话人映射文件（由 derive_speaker_map.py 推导）")
   return parser
 
 def main():
@@ -153,7 +154,8 @@ def main():
 
   script_b = Script(args.script_data)
 
-  a_codes = [args0_to_code(line.speaker) for line in script_a]
+  speaker_map = load_speaker_map(args.speaker_map)
+  a_codes = [args0_to_code(line.speaker, speaker_map) for line in script_a]
   b_codes = [voice_id_to_code(line.voice_id) for line in script_b]
   b_scenes = [voice_id_to_scene(line.voice_id) for line in script_b]
   b_seqs = [voice_id_to_seq(line.voice_id) for line in script_b]

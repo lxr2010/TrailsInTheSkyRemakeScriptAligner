@@ -57,8 +57,8 @@ def optimize_with_anchors(script_a, script_b, matches, output_file: Path, a_code
   with output_file.open("w", encoding="utf-8") as f:
     json.dump(final_mapping, f, indent=2, ensure_ascii=False)
 
-def solve_gaps(script_a, script_b, matches, anchors, output_file: Path, a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None):
-  final_mapping = single_match(script_a.texts, script_b.texts, matches, anchors, a_codes=a_codes, b_codes=b_codes, norm_b_by_speaker=norm_b_by_speaker, b_scenes=b_scenes)
+def solve_gaps(script_a, script_b, matches, anchors, output_file: Path, a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None, speaker_positions=None):
+  final_mapping = single_match(script_a.texts, script_b.texts, matches, anchors, a_codes=a_codes, b_codes=b_codes, norm_b_by_speaker=norm_b_by_speaker, b_scenes=b_scenes, speaker_positions=speaker_positions)
   with output_file.open("w", encoding="utf-8") as f:
     json.dump(final_mapping, f, indent=2, ensure_ascii=False)
 
@@ -161,6 +161,10 @@ def main():
   for pos, (code, text) in enumerate(zip(b_codes, script_b.texts)):
     norm_b_by_speaker[code][normalize_text(text)].append(pos)
   norm_b_by_speaker = {k: dict(v) for k, v in norm_b_by_speaker.items()}
+  speaker_positions = defaultdict(list)
+  for pos, code in enumerate(b_codes):
+    speaker_positions[code].append(pos)
+  speaker_positions = dict(speaker_positions)
 
   translation_path = Path(args.translation)
   trans_a = None
@@ -210,7 +214,7 @@ def main():
 
   if should_run_step("top_k", active_steps, forced_start, output_paths["top_k"]):
     logger.info("执行步骤: top_k")
-    solve_gaps(script_a, script_b, matches, final_mapping, output_paths["top_k"], a_codes, b_codes, norm_b_by_speaker, b_scenes)
+    solve_gaps(script_a, script_b, matches, final_mapping, output_paths["top_k"], a_codes, b_codes, norm_b_by_speaker, b_scenes, speaker_positions)
   else:
     logger.info(f"跳过步骤: top_k，已存在 {output_paths['top_k']}")
   top_k_matches = read_int_key_dict(output_paths["top_k"])

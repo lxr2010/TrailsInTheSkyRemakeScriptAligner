@@ -28,7 +28,7 @@ def store_cached_llm_segment(llm_cache):
   with open("llm_segments.json", "w", encoding="utf-8") as f:
     json.dump(llm_cache, f, indent=2, ensure_ascii=False)
 
-def speaker_recall(norm_a, expected, norm_b_by_speaker, limit=8):
+def speaker_recall(norm_a, expected, norm_b_by_speaker, limit=200):
   """短文本补召回：按说话人查找归一化文本精确匹配的位置。"""
   if not norm_b_by_speaker:
     return []
@@ -94,7 +94,7 @@ def _pick_by_context(p, top_cands, anchors_dict, b_scenes):
     return min(top_cands, key=lambda c: abs(c - interp))
   return top_cands[0]
 
-def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anchors:dict[int,int], a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None):
+def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anchors:dict[int,int], a_codes=None, b_codes=None, norm_b_by_speaker=None, b_scenes=None, speaker_positions=None):
 
   llm_cache = load_cached_llm_segment()
 
@@ -171,8 +171,8 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
 
       if len(top_cands) == 1:
         temp_single[p] = top_cands[0]
-      elif all(max_norm == get_norm_text_b(c) for c in top_cands):
-        # 文本完全一致时，场景优先 + 插值选位置
+      elif len({normalize(script_b[c]) for c in top_cands}) == 1:
+        # 单行归一化文本一致（含窗口不同），场景优先 + 插值选位置
         temp_single[p] = _pick_by_context(p, top_cands, temp_single, b_scenes)
       else:
         if p not in pending_llm:
@@ -252,8 +252,8 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
 
       if len(top_cands) == 1:
         single_matches[p] = top_cands[0]
-      elif all(max_norm == get_norm_text_b(c) for c in top_cands):
-        # 文本完全一致时，场景优先 + 插值选位置
+      elif len({normalize(script_b[c]) for c in top_cands}) == 1:
+        # 单行归一化文本一致（含窗口不同），场景优先 + 插值选位置
         single_matches[p] = _pick_by_context(p, top_cands, single_matches, b_scenes)
       else:
         llm_match = llm_cache.get(p)
@@ -263,6 +263,27 @@ def single_match(script_a:list[str], script_b:list[str], matches:list[dict], anc
           multiple_matches[p] = list(good.keys())
 
   store_cached_llm_segment(llm_cache)
+
+  # ── Phase 4: 最终补扫未匹配位置（说话人精确 + 模糊）──
+  if norm_b_by_speaker is not None and speaker_positions is not None:
+    norm_b_texts = [normalize(t) for t in script_b]
+    swept = 0
+    for p in range(len(script_a)):
+      if p in single_matches or p in multiple_matches:
+        continue
+      expected = a_codes[p] if a_codes is not None and p < len(a_codes) else None
+      if expected is None:
+        continue
+      na = normalize(script_a[p])
+      cands = speaker_recall(na, expected, norm_b_by_speaker, limit=200)
+      if not cands:
+        scored = [(fuzz.WRatio(na, norm_b_texts[pos]), pos) for pos in speaker_positions.get(expected, [])]
+        cands = [pos for s, pos in scored if s >= 92]
+      if cands:
+        single_matches[p] = _pick_by_context(p, cands, single_matches, b_scenes)
+        swept += 1
+    if swept:
+      logger.info(f"最终补扫匹配了 {swept} 个未匹配位置")
 
   final_matches = {k:[v] for k,v in single_matches.items()}
   final_matches.update(multiple_matches)

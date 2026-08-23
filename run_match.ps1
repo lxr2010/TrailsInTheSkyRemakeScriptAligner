@@ -3,7 +3,8 @@
     一键运行台词匹配（fc / sc / 3rd）。
 
 .DESCRIPTION
-    自动下载 EVO 侧数据（script_data_*.json / additional_voice_*.json），
+    自动下载 EVO 侧数据（script_data_*.json / additional_voice_*.json）
+    以及说话人映射（speaker_map_*.json，可选），
     然后调用 main.py 完成匹配，输出 match_result_<game>.csv。
 
     需要用户自备 Remake 侧数据（由 decompile_pac.ps1 生成）：
@@ -52,10 +53,11 @@ if (-not (Test-Path $OutputDir)) {
 $OutputDir = (Resolve-Path $OutputDir).Path
 
 # ---- EVO 侧数据下载源 ----
-$ReleaseTag = "v1.0-extra"
+$ReleaseTag = "v1.1.0"
 $BaseUrl = "https://github.com/lxr2010/TrailsInTheSkyRemakeScriptAligner/releases/download/$ReleaseTag"
 $scriptDataName = "script_data_$Game.json"
 $additionalVoiceName = "additional_voice_$Game.json"
+$speakerMapName = "speaker_map_$Game.json"
 
 function Ensure-File([string]$name) {
     $local = Join-Path $OutputDir $name
@@ -73,9 +75,32 @@ function Ensure-File([string]$name) {
     return $local
 }
 
+function Ensure-OptionalFile([string]$name) {
+    $local = Join-Path $OutputDir $name
+    if (Test-Path $local) {
+        Write-Host "已存在: $local"
+        return $local
+    }
+    if ($SkipDownload) {
+        Write-Host "缺少可选文件 $name，说话人约束将退化为纯文本匹配。"
+        return $null
+    }
+    $url = "$BaseUrl/$name"
+    try {
+        Write-Host "下载 $url"
+        Invoke-WebRequest -Uri $url -OutFile $local
+        Write-Host "  已保存: $local"
+        return $local
+    } catch {
+        Write-Host "下载可选文件 $name 失败，说话人约束将退化为纯文本匹配。"
+        return $null
+    }
+}
+
 Write-Host "===== 准备 $Game 的 EVO 侧数据 ====="
 $scriptDataPath = Ensure-File $scriptDataName
 $additionalVoicePath = Ensure-File $additionalVoiceName
+$speakerMapPath = Ensure-OptionalFile $speakerMapName
 
 # ---- Remake 侧数据检查 ----
 if (-not (Test-Path $RemakeJp)) {
@@ -102,8 +127,6 @@ $anchorsJson = "anchors_$prefix.json"
 $topKJson = "top_k_matches_$prefix.json"
 $unscriptedJson = "unscripted_matches_$prefix.json"
 $outputCsv = "match_result_$prefix.csv"
-$speakerMap = "speaker_map_$prefix.json"
-
 # ---- 构建 main.py 参数 ----
 $mainArgs = @(
     "main.py",
@@ -115,9 +138,11 @@ $mainArgs = @(
     "--top-k-json", $topKJson,
     "--unscripted-matches-json", $unscriptedJson,
     "--output-csv", $outputCsv,
-    "--new-id-start", $NewIdStart,
-    "--speaker-map", $speakerMap
+    "--new-id-start", $NewIdStart
 )
+if ($speakerMapPath) {
+    $mainArgs += @("--speaker-map", $speakerMapPath)
+}
 if ($Translation) {
     $mainArgs += @("--translation", $Translation)
 }

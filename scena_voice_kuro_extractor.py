@@ -162,14 +162,19 @@ class VoiceExtractor(ast.NodeVisitor):
 
         first_arg = node.args[0]
         # Check if the first argument is a Constant string with the target value
+        # Cmd_text_00/06=普通对话 13=带立绘对话(UNKNOWN_05_13 为反编译别名) 08=分支选项/系统文本
+        OK_CMDS = ('Cmd_text_00', 'Cmd_text_06', 'Cmd_text_13', 'UNKNOWN_05_13', 'Cmd_text_08')
         if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
-            if first_arg.value in ('Cmd_text_00', 'Cmd_text_06'):
+            if first_arg.value in OK_CMDS:
                 # The arguments for Command are in the second parameter, which is a list
                 if len(node.args) > 1 and isinstance(node.args[1], ast.List):
                     arg_nodes = node.args[1].elts
                     processed_args = process_arguments(arg_nodes)
                 else:
                     processed_args = []
+                funcid = 13 if first_arg.value == 'UNKNOWN_05_13' else int(first_arg.value[-2:])
+                if not any(isinstance(a, str) for a in processed_args):
+                    return  # 无字面文本（纯 LoadVar/INT 模板，如部分 Cmd_text_08），跳过
 
                 self.results.append({
                     'file': self.file_path,
@@ -177,7 +182,7 @@ class VoiceExtractor(ast.NodeVisitor):
                     'column': node.col_offset,
                     'type': 'Command',
                     'code': ast.unparse(node),
-                    'normalized_args': normalize_args(arg_nodes, 0x5, int(first_arg.value[-2:])),
+                    'normalized_args': normalize_args(arg_nodes, 0x5, funcid),
                     'command': first_arg.value,
                     'args': processed_args
                 })

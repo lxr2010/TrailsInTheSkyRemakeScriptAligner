@@ -637,6 +637,16 @@ uv run python main.py --speaker-map speaker_map_3rd.json
 
 ---
 
+## 相关项目
+
+- [SkyStructureAligner](https://github.com/lxr2010/SkyStructureAligner) — 本项目的结构匹配姊妹篇：以**控制流结构**（块图 + 连续录音段 + 位置约束）完成 Remake↔EVO 台词-语音对齐，无 LLM 依赖，输出 FC `match_result.csv` 式详表与人工审查表。与本项目的线性/LLM 匹配互补（同数据双匹配一致率 98%）。
+
+> ### Related Projects
+>
+> - [SkyStructureAligner](https://github.com/lxr2010/SkyStructureAligner) — the structural-matching sibling of this project: aligns Remake↔EVO dialogue to voice IDs via control-flow structure (block graphs + recording runs + positional constraints), LLM-free.
+
+---
+
 ## 鸣谢
 
 本项目受以下开源项目启发或直接受益：

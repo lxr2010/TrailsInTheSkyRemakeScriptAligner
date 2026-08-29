@@ -102,18 +102,14 @@ $scriptDataPath = Ensure-File $scriptDataName
 $additionalVoicePath = Ensure-File $additionalVoiceName
 $speakerMapPath = Ensure-OptionalFile $speakerMapName
 
-# ---- Remake 语音表(可选): 来自 SkyStructureAligner Release, 用于 RemakeVoiceFilename 列 ----
+# ---- Remake 语音表(可选): 用于 RemakeVoiceFilename 列。属 Remake 解包产物, 不随任何 Release 分发,
+#      请用自身游戏文件生成: sky_extract_pac 解包 table.pac -> KuroTools tbl2json -> t_voice_$Game.json 放本目录 ----
 $tVoiceName = "t_voice_$Game.json"
 $tVoiceLocal = Join-Path $ScriptRoot $tVoiceName
-if (-not (Test-Path $tVoiceLocal) -and -not $SkipDownload) {
-    $tVoiceUrl = "https://github.com/lxr2010/SkyStructureAligner/releases/download/v1.0.1/$tVoiceName"
-    try {
-        Write-Host "下载 $tVoiceUrl"
-        Invoke-WebRequest -Uri $tVoiceUrl -OutFile $tVoiceLocal
-        Write-Host "  已保存: $tVoiceLocal (RemakeVoiceFilename 列可用)"
-    } catch {
-        Write-Host "下载 $tVoiceName 失败，RemakeVoiceFilename 列将为空。"
-    }
+if (Test-Path $tVoiceLocal) {
+    Write-Host "已存在: $tVoiceLocal (RemakeVoiceFilename 列可用)"
+} else {
+    Write-Host "缺少 $tVoiceName，RemakeVoiceFilename 列将为空（生成方法见 SkyStructureAligner README）。"
 }
 
 # ---- Remake 侧数据检查 ----

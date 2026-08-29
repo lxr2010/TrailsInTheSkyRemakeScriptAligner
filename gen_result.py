@@ -3,6 +3,7 @@ import logging
 from models import RemakeScript, Script, RemakeLine, Line, UnscriptedConversation, UnscriptedLine
 from llm import call_llm_to_identify_redundant, call_llm_to_verify_alignment
 import csv
+import os
 
 logger = logging.getLogger()
 
@@ -115,7 +116,7 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript | No
   trans_map = { t.id : t for t in trans_a } if trans_a is not None else {}
   with open(match_result_csv, 'w', encoding='utf-8', newline='\n') as f:
     writer = csv.writer(f)
-    writer.writerow(['RemakeVoiceID', 'RemakeScenaScriptFilename', 'RemakeScenaScriptLineno', 'RemakeScenaScriptAddStructLineno', 'RemakeScenaScriptTranslationLineno', 'RemakeScenaScriptTranslationAddStructLineno', 'OldScriptId', 'OldCharacterId', 'OldVoiceFilename', 'MatchType', 'RemakeVoiceCategory','RemakeVoiceTranslation', 'RemakeVoiceText', 'OldVoiceText',"Annotation"])
+    writer.writerow(['RemakeVoiceID', 'RemakeScenaScriptFilename', 'RemakeScenaScriptLineno', 'RemakeScenaScriptAddStructLineno', 'RemakeScenaScriptTranslationLineno', 'RemakeScenaScriptTranslationAddStructLineno', 'RemakeFunction', 'RemakeVoiceFilename', 'OldScriptId', 'OldCharacterId', 'OldVoiceFilename', 'MatchType', 'RemakeVoiceCategory','RemakeVoiceTranslation', 'RemakeVoiceText', 'OldVoiceText',"Annotation"])
     rows_to_write = []
     for pos_a, line_a in enumerate(script_a) :
       row_to_w = []
@@ -132,6 +133,8 @@ def gen_csv(script_a: RemakeScript, script_b: Script, trans_a: RemakeScript | No
         trans_text = trans_map[line_a.id].text
       row_to_w.append(trans_lineno) # Translation Lineno
       row_to_w.append(trans_lineno_corr) # Translation AddStruct Lineno
+      row_to_w.append(line_a.function or "") # RemakeFunction（所属结构函数, 由提取器 set_current_function 跟踪）
+      row_to_w.append(t_voice.get(str(line_a.remake_voice_id), {}).get('f', '') if line_a.remake_voice_id else '') # RemakeVoiceFilename
       if pos_a in final_matches:
         best_pos_b = final_matches[pos_a][0]
         line_b:Line = script_b[best_pos_b]

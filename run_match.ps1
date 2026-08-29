@@ -102,6 +102,20 @@ $scriptDataPath = Ensure-File $scriptDataName
 $additionalVoicePath = Ensure-File $additionalVoiceName
 $speakerMapPath = Ensure-OptionalFile $speakerMapName
 
+# ---- Remake 语音表(可选): 来自 SkyStructureAligner Release, 用于 RemakeVoiceFilename 列 ----
+$tVoiceName = "t_voice_$Game.json"
+$tVoiceLocal = Join-Path $ScriptRoot $tVoiceName
+if (-not (Test-Path $tVoiceLocal) -and -not $SkipDownload) {
+    $tVoiceUrl = "https://github.com/lxr2010/SkyStructureAligner/releases/download/v1.0.1/$tVoiceName"
+    try {
+        Write-Host "下载 $tVoiceUrl"
+        Invoke-WebRequest -Uri $tVoiceUrl -OutFile $tVoiceLocal
+        Write-Host "  已保存: $tVoiceLocal (RemakeVoiceFilename 列可用)"
+    } catch {
+        Write-Host "下载 $tVoiceName 失败，RemakeVoiceFilename 列将为空。"
+    }
+}
+
 # ---- Remake 侧数据检查 ----
 if (-not (Test-Path $RemakeJp)) {
     throw "未找到 Remake 日文数据: $RemakeJp（请先用 decompile_pac.ps1 生成）"

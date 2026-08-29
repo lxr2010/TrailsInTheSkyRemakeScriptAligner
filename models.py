@@ -82,6 +82,7 @@ class RemakeLine(BaseModel):
     text: str
     remake_voice_id: int | None = None
     speaker: int | None = None
+    function: str | None = None
     filebase: str
     lineno: int
     lineno_corr: int | None = None
@@ -100,6 +101,9 @@ class RemakeLine(BaseModel):
                     data["text"] = ""
                 if isinstance(args[0], int):
                     data["speaker"] = args[0]
+            function = data.pop("function", None)
+            if function:
+                data["function"] = function
             file = data.pop("file", None)
             if file:
                 data["filebase"] = Path(file).stem
@@ -120,6 +124,9 @@ class RemakeLine(BaseModel):
                     data["text"] = ""
                 if isinstance(args[0], int):
                     data["speaker"] = args[0]
+            function = data.function
+            if function:
+                data["function"] = function
             file = data.file
             if file:
                 data["filebase"] = Path(file).stem

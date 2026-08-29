@@ -104,9 +104,10 @@ class VoiceExtractor(ast.NodeVisitor):
     def __init__(self, file_path):
         self.file_path = file_path
         self.results = []
+        self.current_function = None   # set_current_function 跟踪，供 RemakeFunction 列
 
     def visit_Call(self, node):
-        # Ensure we have a simple function call like `func(...)`
+        # Ensure that we have a simple function call like `func(...)`
         if not isinstance(node.func, ast.Name):
             self.generic_visit(node)
             return
@@ -117,6 +118,10 @@ class VoiceExtractor(ast.NodeVisitor):
             self._handle_add_struct(node)
         elif func_name == 'Command': # Changed from CallFunction
             self._handle_command(node)
+        elif func_name == 'set_current_function':
+            # 跟踪当前函数名（TK_/EV_/QS_/ST_…），随 Command 记录
+            if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                self.current_function = node.args[0].value
 
         # Continue traversing the tree
         self.generic_visit(node)
@@ -184,6 +189,7 @@ class VoiceExtractor(ast.NodeVisitor):
                     'code': ast.unparse(node),
                     'normalized_args': normalize_args(arg_nodes, 0x5, funcid),
                     'command': first_arg.value,
+                    'function': self.current_function,   # 所属结构函数（RemakeFunction 列）
                     'args': processed_args
                 })
 
